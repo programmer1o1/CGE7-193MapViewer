@@ -548,14 +548,12 @@ export class FFXRenderer implements Viewer.SceneGfx {
             // clear out subscene if this is a new map
             const needsMap = this.shatter.map >= 0;
             this.battleState = null;
+            if (this.subScene)
+                this.subScene.battleState = null;
             if (needsMap && this.subScene && this.subScene.levelObjects.mapID !== (this.shatter.map & 0xFF)) {
                 this.subScene.levelObjects.actorResources = new Map(); // this is shared with the main scene, so don't destroy it
                 this.subScene.destroy(this.levelObjects.cache.device);
                 this.subScene = null;
-            } else if (this.subScene?.battleState) {
-                for (let m of this.subScene.battleState?.monsters)
-                    m.destroy(this.levelObjects.cache.device);
-                this.subScene.battleState = null;
             }
             this.shatter.startedLoad = false;
             this.shatter.startT = viewerInput.time * 30 / 1000;
@@ -610,20 +608,13 @@ export class FFXRenderer implements Viewer.SceneGfx {
                 Promise.all([mapPromise, battlePromise]).then(([map, battle]) => {
                     const scene = map as FFXRenderer;
                     if (scene) {
-                        if (this.shatter.map !== scene.levelObjects.mapID) {
-                            scene.destroy(this.levelObjects.cache.device);
+                        if (this.shatter.map !== scene.levelObjects.mapID)
                             return; // something changed out from under us
-                        }
                         scene.levelObjects.renderFlags = this.levelObjects.renderFlags;
                         scene.levelObjects.actorResources = this.levelObjects.actorResources;
                         this.subScene = scene;
                     }
                     if (this.shatter.map >= 0) {
-                        const old = this.subScene!.battleState;
-                        if (old) {
-                            for (let m of old.monsters)
-                                m.destroy(this.levelObjects.cache.device);
-                        }
                         this.subScene!.battleState = battle;
                         const script = new EventScript(battle.encounter.script, this.subScene!.levelObjects);
                         script.update(0);
@@ -1088,7 +1079,6 @@ export class FFXRenderer implements Viewer.SceneGfx {
     public destroy(device: GfxDevice): void {
         this.renderHelper.destroy();
 
-        this.sceneTexture.destroy(device);
         for (let i = 0; i < this.modelData.length; i++)
             this.modelData[i].destroy(device);
         for (let i = 0; i < this.textureData.length; i++)
@@ -1099,19 +1089,6 @@ export class FFXRenderer implements Viewer.SceneGfx {
         for (let res of this.levelObjects.actorResources.values())
             res.particles?.destroy(device);
         this.levelObjects.bufferManager.destroy(device);
-        this.levelObjects.shadows.destroy(device);
-        for (let a of this.levelObjects.actors) {
-            a?.destroy(device);
-        }
-        if (this.subScene) {
-            this.subScene.levelObjects.actorResources = new Map();
-            this.subScene.destroy(device);
-        }
-        if (this.battleState) {
-            for (let m of this.battleState?.monsters) {
-                m.destroy(device);
-            }
-        }
     }
 }
 

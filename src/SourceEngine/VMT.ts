@@ -227,7 +227,7 @@ export async function parseVMT(filesystem: SourceFileSystem, path: string, depth
             path = `materials/${path}`;
         }
         if (!filesystem.hasEntry(path))
-            path = `materials/editor/obsolete.vmt`;
+            path = `materials/debug/debugempty.vmt`;
         const buffer = assertExists(await filesystem.fetchFileData(path));
         const str = new TextDecoder('utf8').decode(buffer.createTypedArray(Uint8Array));
 

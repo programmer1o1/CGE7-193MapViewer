@@ -19,9 +19,9 @@ import { SceneDesc, SceneGroup } from './SceneBase.js';
 import logoURL from './assets/logo.png';
 import { AntialiasingMode } from './gfx/helpers/RenderGraphHelpers.js';
 
-export const HIGHLIGHT_COLOR = 'rgb(210, 30, 30)';
-export const COOL_BLUE_COLOR = 'rgb(20, 105, 215)';
-export const PANEL_BG_COLOR = '#411';
+export const HIGHLIGHT_COLOR = 'rgba(0, 255, 0, 1)';
+export const COOL_BLUE_COLOR = 'rgba(215, 20, 143, 1)';
+export const PANEL_BG_COLOR = 'rgb(0, 15, 0)';
 
 export function createDOMFromString(s: string): DocumentFragment {
     return document.createRange().createContextualFragment(s);
