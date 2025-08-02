@@ -6,12 +6,12 @@ The reverse engineering of model formats was done by many people. See the applic
 
 # INTERLOPER FORK
 
-This is a fork of the noclip.website intended for maps related to the Interloper ARG by Anomidae.
-Created by qbyte
+This is a fork of the noclip.website intended for maps related to the Interloper ARG by Anomidae.<br>
+Created by qbyte.
 
 ## Contributing
 
-[Official noclip.website Discord Server](https://discord.gg/bkJmKKv)
+[Official noclip.website Discord Server](https://discord.gg/bkJmKKv)<br>
 [Official Interloper Discord Server](https://discord.gg/H4X9GxZw)
 
 
