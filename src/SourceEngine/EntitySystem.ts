@@ -343,6 +343,7 @@ export class BaseEntity {
                 console.error('BSP model index out of range!', index, 'available:', this.bspRenderer.models.length);
             }
         } else if (modelName.endsWith('.mdl')) {
+            if (modelName == 'models/hostage.mdl') modelName = 'models/hostage/hostage.mdl'; // Hostage fix do something more clever later
             this.fetchStudioModel(renderContext, modelName);
         } else if (modelName.endsWith('.vmt') || modelName.endsWith('.spr')) {
             this.fetchSpriteModel(renderContext, modelName);
