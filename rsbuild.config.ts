@@ -33,6 +33,7 @@ export default defineConfig({
   },
   output: {
     target: 'web',
+    assetPrefix: process.env.NODE_ENV === 'production' ? '/CGE7-193MapViewer/' : '/',
     // Mark Node.js built-in modules as external.
     externals: ['fs', 'path', 'url'],
     // TODO: These should be converted to use `new URL('./file.wasm', import.meta.url)`
