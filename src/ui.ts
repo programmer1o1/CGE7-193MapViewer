@@ -1993,6 +1993,7 @@ class About extends Panel {
 <p><strong>NOCLIP.WEBSITE WRITTEN</strong> by Jasper<br>
 <strong>CODE ALSO WRITTEN BY</strong> by Sierra<br>
 <strong>CODE ALSO WRITTEN BY</strong> by qbyte</p>
+<strong>FILES HOSTED BY</strong> by Lunascape</p>
 
 <p><strong>GO TO <a href="https://gaq9.com">GAQ9.COM</strong></a>
 
