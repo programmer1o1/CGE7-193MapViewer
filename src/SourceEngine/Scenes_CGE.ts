@@ -26,7 +26,8 @@ class CGESceneDesc implements SceneDesc {
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `${pathBase}/maps/${this.id}.bsp`);
+        // use absolute URL for maps
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
     }
 }
 
@@ -48,7 +49,8 @@ class TeamFortress2SceneDesc implements SceneDesc {
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `${pathBase}/maps/${this.id}.bsp`);
+        // use absolute URL for maps
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
     }
 }
 
@@ -80,9 +82,9 @@ const sceneDescs = [
     new CGESceneDesc('souer'),
     new CGESceneDesc('plotmas'),
     new CGESceneDesc('belod'),
-    new CGESceneDesc('speckle_r'),
+    new CGESceneDesc('speckle'),
     new CGESceneDesc('stal'),
-    new CGESceneDesc('stork_s'),
+    new CGESceneDesc('stork'),
     new CGESceneDesc('veritas'),
     new CGESceneDesc('blemor_e'),
     new CGESceneDesc('crishy_is'),
@@ -115,7 +117,7 @@ const sceneDescs = [
     new CGESceneDesc('mazemazemazemaze'),
     new CGESceneDesc('coneconeconecone_v1'),
     new CGESceneDesc('coneconeconecone_v2'),
-    new CGESceneDesc('coneconeconecone_v3'),
+    new CGESceneDesc('coneconeconecone_anomi'),
     "Other",
     new CGESceneDesc('kulcs'),
     new CGESceneDesc('hi'),

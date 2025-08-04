@@ -7,7 +7,7 @@ The reverse engineering of model formats was done by many people. See the applic
 # INTERLOPER FORK
 
 This is a fork of the noclip.website intended for maps related to the Interloper ARG by Anomidae.<br>
-Created by qbyte.
+Created by qbyte. Modified by programmer1o1. Almost all things should work.
 
 ## Contributing
 
