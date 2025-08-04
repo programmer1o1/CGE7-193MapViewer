@@ -15,7 +15,6 @@ import { GXRenderHelperGfx, fillSceneParamsDataOnTemplate, GXTextureHolder } fro
 import { GfxDevice } from '../gfx/platform/GfxPlatform.js';
 import { GXMaterialHacks } from '../gx/gx_material.js';
 import { GfxRenderCache } from '../gfx/render/GfxRenderCache.js';
-import * as JPAExplorer from '../InteractiveExamples/JPAExplorer.js';
 import { SceneContext } from '../SceneBase.js';
 import { GfxrAttachmentSlot } from '../gfx/render/GfxRenderGraph.js';
 import { GfxRenderInstList } from '../gfx/render/GfxRenderInstManager.js';
@@ -178,14 +177,6 @@ function createScenesFromBuffer(device: GfxDevice, renderer: BasicRenderer, buff
 }
 
 export function createSceneFromBuffer(context: SceneContext, buffer: ArrayBufferSlice): Viewer.SceneGfx {
-    if (readString(buffer, 0, 4) === 'RARC') {
-        const rarc = RARC.parse(buffer);
-
-        // Special case for SMG's Effect.arc
-        if (rarc.findFile('ParticleNames.bcsv') !== null)
-            return JPAExplorer.createRendererFromSMGArchive(context, rarc);
-    }
-
     const device = context.device;
     const renderer = new BasicRenderer(device);
     createScenesFromBuffer(device, renderer, buffer);

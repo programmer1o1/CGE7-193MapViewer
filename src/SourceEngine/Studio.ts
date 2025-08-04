@@ -598,7 +598,7 @@ class AttachmentDesc {
 }
 
 export class StudioModelData {
-    private name: string;
+    public name: string;
 
     public bodyPartData: StudioModelBodyPartData[] = [];
     public checksum: number;
@@ -1694,6 +1694,7 @@ function mergeIncludeModel(dst: StudioModelData, src: StudioModelData): void {
 export class StudioModelCache {
     private modelData: StudioModelData[] = [];
     private modelDataPromiseCache = new Map<string, Promise<StudioModelData>>();
+    private errorModelData: StudioModelData | null = null;
 
     constructor(private renderContext: SourceRenderContext, private filesystem: SourceFileSystem) {
     }
@@ -1706,53 +1707,90 @@ export class StudioModelCache {
         return this.filesystem.resolvePath(path, ext);
     }
 
-    private async fetchStudioModelDataInternal(name: string, includeVertexData: boolean = true): Promise<StudioModelData> {
+    private async getErrorModel(): Promise<StudioModelData> {
+        if (this.errorModelData === null) {
+            // load vrad (source engine error)
+            const errorModelPath = 'models/error.mdl';
+            try {
+                this.errorModelData = await this.fetchStudioModelDataInternal(errorModelPath, true, true);
+            } catch (e) {
+                // how did we even get to this point
+                console.error('failed to load error model, its over');
+                throw new Error('error model not available');
+            }
+        }
+        return this.errorModelData;
+    }
+
+    private async fetchStudioModelDataInternal(name: string, includeVertexData: boolean = true, isErrorModel: boolean = false): Promise<StudioModelData> {
         const mdlPath = this.resolvePath(name, '.mdl');
 
         let mdlBuffer: ArrayBufferSlice | null = null;
         let vvdBuffer: ArrayBufferSlice | null = null;
         let vtxBuffer: ArrayBufferSlice | null = null;
-        if (includeVertexData) {
-            const vvdPath = this.resolvePath(name, '.vvd');
-            const vtxPath = this.resolvePath(name, '.dx90.vtx');
-            [mdlBuffer, vvdBuffer, vtxBuffer] = await Promise.all([
-                this.filesystem.fetchFileData(mdlPath),
-                this.filesystem.fetchFileData(vvdPath),
-                this.filesystem.fetchFileData(vtxPath),
-            ]);
-        } else {
-            mdlBuffer = await this.filesystem.fetchFileData(mdlPath);
-        }
+        
+        try {
+            if (includeVertexData) {
+                const vvdPath = this.resolvePath(name, '.vvd');
+                const vtxPath = this.resolvePath(name, '.dx90.vtx');
+                [mdlBuffer, vvdBuffer, vtxBuffer] = await Promise.all([
+                    this.filesystem.fetchFileData(mdlPath),
+                    this.filesystem.fetchFileData(vvdPath),
+                    this.filesystem.fetchFileData(vtxPath),
+                ]);
+            } else {
+                mdlBuffer = await this.filesystem.fetchFileData(mdlPath);
+            }
 
-        const modelData = new StudioModelData(this.renderContext, assertExists(mdlBuffer), vvdBuffer!, vtxBuffer!);
+            if (mdlBuffer === null) {
+                throw new Error(`Model file not found: ${mdlPath}`);
+            }
 
-        if (modelData.animBlockName !== null) {
-            // Fetch external animation block.
-            const aniPath = this.filesystem.resolvePath(modelData.animBlockName, '.ani');
-            const aniBuffer = (await this.filesystem.fetchFileData(aniPath))!;
+            if (includeVertexData && (vvdBuffer === null || vtxBuffer === null)) {
+                throw new Error(`Model ${name} is missing required vertex data files`);
+            }
 
-            // Go through each of our animations and set the relevant animation data.
-            for (let i = 0; i < modelData.anim.length; i++) {
-                for (let j = 0; j < modelData.anim[i].animsection.length; j++) {
-                    const animsection = modelData.anim[i].animsection[j];
-                    if (animsection.animdata === null) {
-                        assert(animsection.animblock > 0);
-                        const animblock = modelData.animblocks[animsection.animblock];
-                        const blockBuffer = aniBuffer.slice(animblock.dataStart, animblock.dataEnd);
-                        animsection.animdata = new AnimData(blockBuffer.slice(animsection.animindex), modelData.bone);
+            const modelData = new StudioModelData(this.renderContext, mdlBuffer, vvdBuffer!, vtxBuffer!);
+
+            if (modelData.animBlockName !== null) {
+                // Fetch external animation block.
+                const aniPath = this.filesystem.resolvePath(modelData.animBlockName, '.ani');
+                const aniBuffer = (await this.filesystem.fetchFileData(aniPath))!;
+
+                // Go through each of our animations and set the relevant animation data.
+                for (let i = 0; i < modelData.anim.length; i++) {
+                    for (let j = 0; j < modelData.anim[i].animsection.length; j++) {
+                        const animsection = modelData.anim[i].animsection[j];
+                        if (animsection.animdata === null) {
+                            assert(animsection.animblock > 0);
+                            const animblock = modelData.animblocks[animsection.animblock];
+                            const blockBuffer = aniBuffer.slice(animblock.dataStart, animblock.dataEnd);
+                            animsection.animdata = new AnimData(blockBuffer.slice(animsection.animindex), modelData.bone);
+                        }
                     }
                 }
             }
-        }
-    
-        for (let i = 0; i < modelData.includemodel.length; i++) {
-            // includeModels should not have additional vertex information.
-            const includeModel = await this.fetchStudioModelData(modelData.includemodel[i], false);
-            mergeIncludeModel(modelData, includeModel);
-        }
+        
+            for (let i = 0; i < modelData.includemodel.length; i++) {
+                // includeModels should not have additional vertex information.
+                const includeModel = await this.fetchStudioModelData(modelData.includemodel[i], false);
+                mergeIncludeModel(modelData, includeModel);
+            }
 
-        this.modelData.push(modelData);
-        return modelData;
+            this.modelData.push(modelData);
+            return modelData;
+            
+        } catch (error) {
+            if (!isErrorModel) {
+                console.error(`failed to load model: ${name}`, error);
+                console.log(`loading error model instead of: ${name}`);
+                // return the error model instead
+                return await this.getErrorModel();
+            } else {
+                // if we're already trying to load the error model and it fails, re-throw
+                throw error;
+            }
+        }
     }
 
     public fetchStudioModelData(path: string, includeVertexData: boolean = true): Promise<StudioModelData> {
@@ -2008,11 +2046,26 @@ function calcBoneMatrix(dstBoneMatrix: mat4[], modelData: StudioModelData): void
     }
 }
 
-function calcWorldFromBone(worldFromBoneMatrix: mat4[], boneMatrix: ReadonlyMat4[], modelMatrix: ReadonlyMat4, modelData: StudioModelData): void {
+function calcWorldFromBone(worldFromBoneMatrix: mat4[], boneMatrix: ReadonlyMat4[], modelMatrix: ReadonlyMat4, modelData: StudioModelData, modelScale?: ReadonlyVec3, customscale: number = 1.0): void {
+    // apply scaling at the root
+    let rootMatrix = modelMatrix;
+    if (modelScale && !vec3.exactEquals(modelScale, vec3.fromValues(1, 1, 1))) {
+        const scaledModelMatrix = mat4.create();
+        mat4.copy(scaledModelMatrix, modelMatrix);
+        
+        // apply scale with multiplier (should be only camera.mdl, cone, and node hint)
+        const effectiveScale = vec3.create();
+        vec3.scale(effectiveScale, modelScale, customscale);
+        
+        mat4.scale(scaledModelMatrix, scaledModelMatrix, effectiveScale);
+        rootMatrix = scaledModelMatrix;
+    }
+    
+    // compute the bone hierarchy
     for (let i = 0; i < worldFromBoneMatrix.length; i++) {
         const bone = modelData.bone[i];
-        const parentBoneMatrix = bone.parent >= 0 ? boneMatrix[bone.parent] : modelMatrix;
-        mat4.mul(worldFromBoneMatrix[i], parentBoneMatrix, worldFromBoneMatrix[i]);
+        const parentBoneMatrix = bone.parent >= 0 ? worldFromBoneMatrix[bone.parent] : rootMatrix;
+        mat4.mul(worldFromBoneMatrix[i], parentBoneMatrix, boneMatrix[i]);
     }
 }
 
@@ -2063,7 +2116,10 @@ class StudioModelBodyPartInstance {
 const scratchAABB = new AABB();
 export class StudioModelInstance {
     public visible: boolean = true;
-    // Pose data
+    public modelScale = vec3.fromValues(1, 1, 1);
+    public customscale = 1.0; // for model-specific adjustments (why the fuck camera.mdl, cone, and hint node is not scaled accurately oml)
+
+    // pose data
     public modelMatrix = mat4.create();
     public worldFromBoneMatrix: mat4[];
     public worldFromPoseMatrix: mat4[];
@@ -2083,7 +2139,8 @@ export class StudioModelInstance {
         this.worldFromPoseMatrix = nArray(this.modelData.bone.length, () => mat4.create());
         this.attachmentMatrix = nArray(this.modelData.attachment.length, () => mat4.create());
         calcBoneMatrix(this.worldFromBoneMatrix, this.modelData);
-        calcWorldFromBone(this.worldFromBoneMatrix, this.worldFromBoneMatrix, this.modelMatrix, this.modelData);
+
+        calcWorldFromBone(this.worldFromBoneMatrix, this.worldFromBoneMatrix, this.modelMatrix, this.modelData, this.modelScale);
         calcAttachmentMatrix(this.attachmentMatrix, this.worldFromBoneMatrix, this.modelData);
         calcWorldFromPose(this.worldFromPoseMatrix, this.worldFromBoneMatrix, this.modelData);
         this.viewBB = this.modelData.viewBB;
@@ -2163,16 +2220,34 @@ export class StudioModelInstance {
 
             calcPoseFromAnimation(this.worldFromBoneMatrix, anim, frame, this.modelData);
         }
-        calcWorldFromBone(this.worldFromBoneMatrix, this.worldFromBoneMatrix, this.modelMatrix, this.modelData);
+        
+        // pass the modelScale to the bone calculation
+        calcWorldFromBone(this.worldFromBoneMatrix, this.worldFromBoneMatrix, this.modelMatrix, this.modelData, this.modelScale, this.customscale);
         calcAttachmentMatrix(this.attachmentMatrix, this.worldFromBoneMatrix, this.modelData);
         calcWorldFromPose(this.worldFromPoseMatrix, this.worldFromBoneMatrix, this.modelData);
+    }
+
+    private getScaledModelMatrix(dst: mat4): void {
+        mat4.copy(dst, this.modelMatrix);
+
+        // check if this model has a proper bone hierarchy
+        const hasBoneHierarchy = this.modelData.bone.some(bone => bone.parent >= 0);
+        
+        // apply scaling in the model matrix c
+        if ((!hasBoneHierarchy || this.modelData.bone.length <= 1) && !vec3.exactEquals(this.modelScale, vec3.fromValues(1, 1, 1))) {
+            mat4.scale(dst, dst, this.modelScale);
+        }
     }
 
     public checkFrustum(renderContext: SourceRenderContext): boolean {
         if (!this.visible)
             return false;
 
-        scratchAABB.transform(this.viewBB, this.modelMatrix);
+        // use scaled model matrix for frustum check
+        const scaledModelMatrix = mat4.create();
+        this.getScaledModelMatrix(scaledModelMatrix);
+
+        scratchAABB.transform(this.viewBB, scaledModelMatrix);
         if (!renderContext.currentView.frustum.contains(scratchAABB))
             return false;
 
@@ -2183,12 +2258,17 @@ export class StudioModelInstance {
         if (!this.checkFrustum(renderContext))
             return;
 
+        // use the same scaling logic lol
+        const scaledModelMatrix = mat4.create();
+        this.getScaledModelMatrix(scaledModelMatrix);
+
+        scratchAABB.transform(this.viewBB, scaledModelMatrix);
         scratchAABB.centerPoint(scratchVec3a);
         const depth = computeViewSpaceDepthFromWorldSpacePoint(renderContext.currentView.viewFromWorldMatrix, scratchVec3a);
 
         const lodIndex = this.getLODModelIndex(renderContext);
         for (let i = 0; i < this.bodyPartInstance.length; i++)
-            this.bodyPartInstance[i].getLODInstance(lodIndex).prepareToRender(renderContext, renderInstManager, this.modelMatrix, this.worldFromPoseMatrix, scratchAABB, depth);
+            this.bodyPartInstance[i].getLODInstance(lodIndex).prepareToRender(renderContext, renderInstManager, scaledModelMatrix, this.worldFromPoseMatrix, scratchAABB, depth);
     }
 
     public destroy(device: GfxDevice): void {

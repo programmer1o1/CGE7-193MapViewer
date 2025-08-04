@@ -1,4 +1,3 @@
-
 import ArrayBufferSlice from './ArrayBufferSlice.js';
 import { assert, assertExists } from './util.js';
 import { IS_DEVELOPMENT } from './BuildVersion.js';
@@ -9,9 +8,13 @@ export interface NamedArrayBufferSlice extends ArrayBufferSlice {
 }
 
 function getDataStorageBaseURL(isDevelopment: boolean): string {
-    if (isDevelopment)
-        return `/data`;
-    return import.meta.env.PUBLIC_STORAGE_URL;
+    // always use tf2 materials from noclip
+    return 'https://z.noclip.website';
+    
+    // original implementation commented out for reference
+    // if (isDevelopment)
+    //     return `/data`;
+    // return import.meta.env.PUBLIC_STORAGE_URL;
 }
 
 function getDataURLForPath(url: string, isDevelopment: boolean): string {
@@ -285,13 +288,17 @@ export class DataFetcher {
     }
 
     public async init() {
-        if (IS_DEVELOPMENT) {
-            // Check for the existence of a /data directory.
-            // TODO(jstpierre): Put back this fix for rsbuild.
-            this.useDevelopmentStorage = true;
-        } else {
-            this.useDevelopmentStorage = false;
-        }
+        // simplified init - always use production tf2 urls
+        this.useDevelopmentStorage = false;
+        
+        // original development check commented out
+        // if (IS_DEVELOPMENT) {
+        //     // Check for the existence of a /data directory.
+        //     // TODO(jstpierre): Put back this fix for rsbuild.
+        //     this.useDevelopmentStorage = true;
+        // } else {
+        //     this.useDevelopmentStorage = false;
+        // }
 
         const REQUEST_CACHE_NAME = `request-cache-v1`;
         try {
@@ -309,17 +316,20 @@ export class DataFetcher {
     }
 
     public async mount() {
-        let directory: FileSystemDirectoryHandle;
-
-        try {
-            directory = await window.showDirectoryPicker();
-        } catch(e) {
-            // AbortError, likely.
-            return;
-        }
-
-        const mount = new DataFetcherMount(directory);
-        this.mounts.push(mount);
+        // mount functionality commented out since we're using remote tf2 resources
+        // keeping it here in case someone wants to re-enable local file mounting
+        
+        // let directory: FileSystemDirectoryHandle;
+        // try {
+        //     directory = await window.showDirectoryPicker();
+        // } catch(e) {
+        //     // AbortError, likely.
+        //     return;
+        // }
+        // const mount = new DataFetcherMount(directory);
+        // this.mounts.push(mount);
+        
+        console.log('local mounting disabled - using tf2 remote resources');
     }
 
     private manageCache(): void {
@@ -420,12 +430,13 @@ export class DataFetcher {
     }
 
     public async fetchData(path: string, options: DataFetcherOptions = {}): Promise<NamedArrayBufferSlice> {
-        for (let i = 0; i < this.mounts.length; i++) {
-            const mount = this.mounts[i];
-            const fileData = await mount.fetchData(path, options);
-            if (fileData !== null)
-                return fileData;
-        }
+        // skip local mount checking since we're using remote resources
+        // for (let i = 0; i < this.mounts.length; i++) {
+        //     const mount = this.mounts[i];
+        //     const fileData = await mount.fetchData(path, options);
+        //     if (fileData !== null)
+        //         return fileData;
+        // }
 
         const url = this.getDataURLForPath(path);
         return await this.fetchURL(url, options);

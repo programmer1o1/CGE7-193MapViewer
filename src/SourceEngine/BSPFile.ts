@@ -1118,26 +1118,28 @@ export class BSPFile {
         }
         //#endregion
 
-        //#region HDR determination
+        //#region hdr determination
         let lighting: ArrayBufferSlice | null = null;
 
         const preferHDR = true;
         if (preferHDR) {
-            lighting = getLumpData(LumpType.LIGHTING_HDR, 1);
-            this.usingHDR = true;
-
-            if (lighting === null || lighting.byteLength === 0) {
-                lighting = getLumpData(LumpType.LIGHTING, 1);
-                this.usingHDR = false;
-            }
-        } else {
-            lighting = getLumpData(LumpType.LIGHTING, 1);
-            this.usingHDR = false;
-
-            if (lighting === null || lighting.byteLength === 0) {
-                lighting = getLumpData(LumpType.LIGHTING_HDR, 1);
+            const lightingHDR = getLumpData(LumpType.LIGHTING_HDR, 1);
+            if (lightingHDR.byteLength > 0) {
+                lighting = lightingHDR;
                 this.usingHDR = true;
             }
+        }
+
+        // fall back to regular lighting if no hdr
+        if (!lighting || lighting.byteLength === 0) {
+            lighting = getLumpData(LumpType.LIGHTING, 1);
+            this.usingHDR = false;
+        }
+
+        // if still no lighting, create empty buffer
+        if (!lighting || lighting.byteLength === 0) {
+            console.warn('no lighting data found in bsp');
+            lighting = new ArrayBufferSlice(new ArrayBuffer(0));
         }
         //#endregion
 
@@ -1504,11 +1506,66 @@ export class BSPFile {
             const width = m_LightmapTextureSizeInLuxels[0] + 1, height = m_LightmapTextureSizeInLuxels[1] + 1;
             const hasBumpmapSamples = !!(tex.flags & TexinfoFlags.BUMPLIGHT);
             const srcNumLightmaps = hasBumpmapSamples ? 4 : 1;
-            const srcLightmapSize = styles.length * (width * height * srcNumLightmaps * 4);
 
             let samples: Uint8Array | null = null;
-            if (lightofs !== -1)
-                samples = lighting.subarray(lightofs, srcLightmapSize).createTypedArray(Uint8Array);
+
+            // check if we should have lighting data
+            if (lightofs !== -1 && !(tex.flags & TexinfoFlags.NOLIGHT)) {
+                // calculate expected size based on styles
+                const bytesPerSample = 4; // ColorRGBExp32
+                const samplesPerLuxel = srcNumLightmaps * styles.length;
+                const expectedSize = width * height * samplesPerLuxel * bytesPerSample;
+                
+                // validate we can read the data
+                if (lightofs >= 0 && lightofs < lighting.byteLength && expectedSize > 0) {
+                    const availableSize = lighting.byteLength - lightofs;
+                    const actualSize = Math.min(expectedSize, availableSize);
+                    
+                    // only try to read if we have valid size
+                    if (actualSize > 0 && lightofs + actualSize <= lighting.byteLength) {
+                        try {
+                            // create a typed array view directly instead of using subarray
+                            const lightingArray = lighting.createTypedArray(Uint8Array);
+                            samples = new Uint8Array(actualSize);
+                            
+                            // manually copy the data
+                            for (let i = 0; i < actualSize; i++) {
+                                samples[i] = lightingArray[lightofs + i];
+                            }
+                            
+                            // pad if needed
+                            if (actualSize < expectedSize) {
+                                const paddedSamples = new Uint8Array(expectedSize);
+                                paddedSamples.set(samples);
+                                
+                                // fill remaining with white light
+                                for (let i = actualSize; i < expectedSize; i += 4) {
+                                    paddedSamples[i + 0] = 255; // r
+                                    paddedSamples[i + 1] = 255; // g
+                                    paddedSamples[i + 2] = 255; // b
+                                    paddedSamples[i + 3] = 0;   // exponent
+                                }
+                                
+                                samples = paddedSamples;
+                            }
+                        } catch (e) {
+                            console.warn(`failed to read lightmap for face ${i}:`, e);
+                            samples = null;
+                        }
+                    }
+                }
+                
+                // create fallback if needed
+                if (!samples && expectedSize > 0) {
+                    samples = new Uint8Array(expectedSize);
+                    for (let i = 0; i < expectedSize; i += 4) {
+                        samples[i + 0] = 255; // r
+                        samples[i + 1] = 255; // g
+                        samples[i + 2] = 255; // b
+                        samples[i + 3] = 0;   // exponent
+                    }
+                }
+            }
 
             const lightmapData: FaceLightmapData = {
                 faceIndex: i,

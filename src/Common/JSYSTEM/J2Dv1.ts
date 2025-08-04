@@ -12,7 +12,7 @@ import { ColorKind, DrawParams, fillSceneParamsData, GXMaterialHelperGfx, Materi
 import { GfxClipSpaceNearZ, GfxDevice } from "../../gfx/platform/GfxPlatform.js";
 import { computeModelMatrixT, projectionMatrixForCuboid } from "../../MathHelpers.js";
 import { projectionMatrixConvertClipSpaceNearZ } from "../../gfx/helpers/ProjectionHelpers.js";
-import { TSDraw } from "../../SuperMarioGalaxy/DDraw.js";
+import { TSDraw } from "../../gfx/helpers/DDraw.js";
 import { BTIData } from "./JUTTexture.js";
 import { GXMaterialBuilder } from "../../gx/GXMaterialBuilder.js";
 import { mat4, vec2, vec4 } from "gl-matrix";
