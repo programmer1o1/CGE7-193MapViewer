@@ -236,6 +236,7 @@ export class SkyboxRenderer {
     private indexBufferDescriptor: GfxIndexBufferDescriptor;
     private materialInstances: BaseMaterial[] = [];
     private modelMatrix = mat4.create();
+    public hasAnyMissingTexture = false; 
 
     constructor(renderContext: SourceRenderContext, private skyname: string) {
         const device = renderContext.device, cache = renderContext.renderCache;
@@ -305,15 +306,37 @@ export class SkyboxRenderer {
         ];
         this.indexBufferDescriptor = { buffer: this.indexBuffer, byteOffset: 0, };
 
+        // should run and see missing texture this will allow "hall of mirrors" even though it already fallback to missing texture
+        this.checkSkyboxTextures(renderContext);
         this.bindMaterial(renderContext);
     }
 
     private async createMaterialInstance(renderContext: SourceRenderContext, path: string): Promise<BaseMaterial> {
         const materialCache = renderContext.materialCache;
-        const materialInstance = await materialCache.createMaterialInstance(path);
-        materialInstance.hasVertexColorInput = false;
-        await materialInstance.init(renderContext);
-        return materialInstance;
+        try {
+            const materialInstance = await materialCache.createMaterialInstance(path);
+            materialInstance.hasVertexColorInput = false;
+            await materialInstance.init(renderContext);
+            return materialInstance;
+        } catch (e) {
+            this.hasAnyMissingTexture = true;
+            throw e;
+        }
+    }
+
+    private checkSkyboxTextures(renderContext: SourceRenderContext): void {
+        const filesystem = renderContext.filesystem;
+        const suffixes = ['rt', 'lf', 'bk', 'ft', 'up', 'dn'];
+        
+        for (const suffix of suffixes) {
+            const path = `skybox/${this.skyname}${suffix}`;
+            const resolvedPath = filesystem.resolvePath(path, '.vmt');
+            
+            // check both possible locations
+            if (!filesystem.hasEntry(resolvedPath) && !filesystem.hasEntry(`materials/${resolvedPath}`)) {
+                this.hasAnyMissingTexture = true;
+            }
+        }
     }
 
     private async bindMaterial(renderContext: SourceRenderContext) {
@@ -324,7 +347,9 @@ export class SkyboxRenderer {
             this.createMaterialInstance(renderContext, `skybox/${this.skyname}ft`),
             this.createMaterialInstance(renderContext, `skybox/${this.skyname}up`),
             this.createMaterialInstance(renderContext, `skybox/${this.skyname}dn`),
-        ]);
+        ]).catch((e) => {
+            return [];
+        });
     }
 
     public movement(renderContext: SourceRenderContext): void {
@@ -332,7 +357,12 @@ export class SkyboxRenderer {
             this.materialInstances[i].movement(renderContext);
     }
 
-    public prepareToRender(renderContext: SourceRenderContext, renderInstManager: GfxRenderInstManager, view: SourceEngineView): void {
+    public prepareToRender(renderContext: SourceRenderContext, renderInstManager: GfxRenderInstManager, view: SourceEngineView): void {        
+        // don't render skybox at all if hall of mirrors is on and we have missing textures
+        if (renderContext.enableSkyBleed && this.hasAnyMissingTexture) {
+            return;
+        }
+
         // Wait until we're ready.
         if (this.materialInstances.length === 0)
             return;
@@ -746,7 +776,7 @@ export class BSPRenderer {
         const template = renderInstManager.pushTemplate();
         template.setVertexInput(this.inputLayout, this.vertexBufferDescriptors, this.indexBufferDescriptor);
 
-        fillSceneParamsOnRenderInst(template, renderContext.currentView, renderContext.toneMapParams);
+        fillSceneParamsOnRenderInst(template, renderContext.currentView, renderContext.toneMapParams, renderContext.currentView.fogParams, renderContext.fullbright);
 
         // Render the world-spawn model.
         if (!!(kinds & RenderObjectKind.WorldSpawn)) {
@@ -1137,6 +1167,8 @@ export class SourceRenderContext {
     public showTriggerDebug = false;
     public showDecalMaterials = true;
     public shadowMapSize = 512;
+    public fullbright = false;  
+    public enableSkyBleed = true; 
 
     public debugStatistics = new DebugStatistics();
 
@@ -1347,7 +1379,13 @@ export class SourceWorldViewRenderer {
 
         const mainColorDesc = new GfxrRenderTargetDescription(GfxFormat.U8_RGBA_RT_SRGB);
         mainColorDesc.copyDimensions(renderTargetDesc);
-        mainColorDesc.clearColor = standardFullClearRenderPassDescriptor.clearColor;
+
+        // use "load" instead of clear when hall of mirrors should be active
+        const hallOfMirrors = renderContext.enableSkyBleed && 
+            renderer.skyboxRenderer !== null && 
+            renderer.skyboxRenderer.hasAnyMissingTexture;
+                
+        mainColorDesc.clearColor = hallOfMirrors ? "load" : standardFullClearRenderPassDescriptor.clearColor;
 
         const mainDepthDesc = new GfxrRenderTargetDescription(GfxFormat.D32F);
         mainDepthDesc.copyDimensions(mainColorDesc);
@@ -1763,6 +1801,21 @@ export class SourceRenderer implements SceneGfx {
             const v = enableColorCorrection.checked;
             this.renderContext.colorCorrection.setEnabled(v);
         };
+
+        const fullbright = new UI.Checkbox('Fullbright', false);
+        fullbright.onchanged = () => {
+            const v = fullbright.checked;
+            this.renderContext.fullbright = v;
+        };
+        renderHacksPanel.contents.appendChild(fullbright.elem);
+        
+        const enableSkyBleed = new UI.Checkbox('Hall of Mirrors (Missing Skybox)', true);
+        enableSkyBleed.onchanged = () => {
+            const v = enableSkyBleed.checked;
+            this.renderContext.enableSkyBleed = v;
+        };
+        renderHacksPanel.contents.appendChild(enableSkyBleed.elem);
+
         renderHacksPanel.contents.appendChild(enableColorCorrection.elem);
         const enableExtensiveWater = new UI.Checkbox('Use Expensive Water', true);
         enableExtensiveWater.onchanged = () => {

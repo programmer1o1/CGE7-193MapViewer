@@ -141,6 +141,7 @@ layout(std140) uniform ub_SkinningParams {
 #define u_ToneMapScale   (u_SceneMisc[0].w)
 
 #define u_FogColor       (u_SceneMisc[1].xyz)
+#define u_Fullbright     (u_SceneMisc[1].w) 
 
 #define u_FogStart       (u_SceneMisc[2].x)
 #define u_FogEnd         (u_SceneMisc[2].y)
@@ -222,9 +223,9 @@ vec4 DebugColorTexture(in vec4 t_TextureSample) {
 }
 
 vec3 SampleLightmapTexture(in vec4 t_TextureSample) {
-#if defined DEBUG_FULLBRIGHT
-    return vec3(1.0);
-#endif
+    // runtime fullbright check
+    if (u_Fullbright > 0.0)
+        return vec3(1.0);
 
     return t_TextureSample.rgb * t_TextureSample.a * ${glslGenerateFloat(RGBM_SCALE)};
 }
@@ -307,11 +308,11 @@ export class ToneMapParams {
     }
 }
 
-function fillSceneParams(d: Float32Array, offs: number, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams>): number {
+function fillSceneParams(d: Float32Array, offs: number, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams>, fullbright: boolean = false): number {
     const baseOffs = offs;
     offs += fillMatrix4x4(d, offs, view.clipFromWorldMatrix);
     offs += fillVec3v(d, offs, view.cameraPos, toneMapParams.toneMapScale);
-    offs += fillGammaColor(d, offs, fogParams.color);
+    offs += fillColor(d, offs, fogParams.color, fullbright ? 1.0 : 0.0);  // pack fullbright in alpha
     offs += fillVec4(d, offs, fogParams.start, fogParams.end, fogParams.maxdensity);
     return offs - baseOffs;
 }
@@ -326,10 +327,10 @@ export function fillScaleBias(d: Float32Array, offs: number, m: ReadonlyMat4): n
     return fillVec4(d, offs, scaleS, scaleT, transS, transT);
 }
 
-export function fillSceneParamsOnRenderInst(renderInst: GfxRenderInst, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams> = view.fogParams): void {
+export function fillSceneParamsOnRenderInst(renderInst: GfxRenderInst, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams> = view.fogParams, fullbright: boolean = false): void {
     let offs = renderInst.allocateUniformBuffer(MaterialShaderTemplateBase.ub_SceneParams, 28);
     const d = renderInst.mapUniformBufferF32(MaterialShaderTemplateBase.ub_SceneParams);
-    fillSceneParams(d, offs, view, toneMapParams, fogParams);
+    fillSceneParams(d, offs, view, toneMapParams, fogParams, fullbright);
 }
 
 export class EntityMaterialParameters {
