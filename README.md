@@ -11,6 +11,7 @@ Created by qbyte. Modified by programmer1o1. Almost all things should work.
 
 ## Contributing
 
+[Official noclip.website Github](https://github.com/magcius/noclip.website)<br>
 [Official noclip.website Discord Server](https://discord.gg/bkJmKKv)<br>
 [Official Interloper Discord Server](https://discord.gg/H4X9GxZw)
 
