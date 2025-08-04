@@ -762,7 +762,7 @@ export class BSPRenderer {
 
                 for (const faceIdx of this.liveFaceSet.values()) {
                     const lightmapUpdater = this.lightmapUpdaters[faceIdx];
-                    if (lightmapUpdater !== null) {
+                    if (lightmapUpdater !== null && lightmapUpdater !== undefined) {
                         lightmapUpdater.update(renderContext);
                         lightmapUpdater.buildLightmap(renderContext, this.startLightmapPageIndex);
                     }

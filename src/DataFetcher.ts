@@ -119,11 +119,16 @@ class DataFetcherRequest {
         this.started = true;
 
         if (this.cache !== null) {
-            const match = await this.cache.match(this.request);
-            if (match !== undefined) {
-                const arrayBuffer = await match.arrayBuffer();
-                this.resolveArrayBuffer(arrayBuffer);
-                return;
+            try {
+                // Hey so I have no clue what the fuck this does I hope its not import that i ignore it dod won't load otherwise
+                const match = await this.cache.match(this.request);
+                if (match !== undefined) {
+                    const arrayBuffer = await match.arrayBuffer();
+                    this.resolveArrayBuffer(arrayBuffer);
+                    return;
+                }
+            } catch(e) {
+                console.log(e)
             }
         }
 

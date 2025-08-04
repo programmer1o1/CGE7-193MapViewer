@@ -27,7 +27,7 @@ class TeamFortress2SceneDesc implements SceneDesc {
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/tf/maps/${this.id}.bsp`);
     }
 }
 
@@ -53,7 +53,7 @@ class HalfLife2Ep2SceneDesc implements SceneDesc {
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/ep2/maps/${this.id}.bsp`);
     }
 }
 
@@ -72,7 +72,7 @@ class HalfLife2SceneDesc implements SceneDesc {
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/hl2/maps/${this.id}.bsp`);
     }
 }
 
@@ -86,17 +86,19 @@ class CounterStrikeGOSceneDesc implements SceneDesc {
         const filesystem = await context.dataShare.ensureObject(`${csgoPathBase}/SourceFileSystem`, async () => {
             const filesystem = new SourceFileSystem(context.dataFetcher);
             await Promise.all([
-                filesystem.createVPKMount(`${csgoPathBase}/csgo/pak01`),
+                filesystem.createVPKMount(`${tf2PathBase}/hl2/hl2_textures`),
+                filesystem.createVPKMount(`${tf2PathBase}/hl2/hl2_misc`),
+                filesystem.createVPKMount(`${csgoPathBase}/pak01`),
             ]);
             return filesystem;
         });
         
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/csgo/maps/${this.id}.bsp`);
     }
 }
 
-const dodPathBase = `DayOfDefeat`;
+const dodPathBase = `dod`;
 class DayOfDefeatSceneDesc implements SceneDesc {
     constructor(public id: string, public name: string = id) {
     }
@@ -105,15 +107,16 @@ class DayOfDefeatSceneDesc implements SceneDesc {
         const filesystem = await context.dataShare.ensureObject(`${dodPathBase}/SourceFileSystem`, async () => {
             const filesystem = new SourceFileSystem(context.dataFetcher);
             await Promise.all([
-                filesystem.createVPKMount(`${dodPathBase}/dod/dod_pak`),
-                filesystem.createVPKMount(`${dodPathBase}/hl2/hl2_textures`),
-                filesystem.createVPKMount(`${dodPathBase}/hl2/hl2_misc`),
+                filesystem.createVPKMount(`https://static.gaq9.com/dod/dod_pak`),
+                // filesystem.createVPKMount(`${dodPathBase}/dod_pak`),
+                filesystem.createVPKMount(`${tf2PathBase}/hl2/hl2_textures`),
+                filesystem.createVPKMount(`${tf2PathBase}/hl2/hl2_misc`),
             ]);
             return filesystem;
         });
 
         const loadContext = new SourceLoadContext(filesystem);
-        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/${this.id}/${this.id}.bsp`);
+        return createScene(context, loadContext, this.id, `https://static.gaq9.com/maps/dod/maps/${this.id}.bsp`);
     }
 }
 
@@ -143,7 +146,7 @@ const sceneDescs = [
     "Day of Defeat",
     new DayOfDefeatSceneDesc('dod_data'),
 
-    "Source Filmaker",
+    "Source Filmmaker",
 
 
 ];
