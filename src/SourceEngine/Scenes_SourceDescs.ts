@@ -41,6 +41,10 @@ export class CGESceneDesc implements SceneDesc {
             await Promise.all([
                 filesystem.createVPKMount(`${pakfilesPathBase}/tf2/tf2_textures`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/tf2/tf2_misc`),
+
+                // uncomment these, when you implement a toggleable option for these
+                //filesystem.createVPKMount(`${pakfilesPathBase}/tf2/plotmas_d`),
+                //filesystem.createVPKMount(`${pakfilesPathBase}/tf2/stork`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/hl2/hl2_textures`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/hl2/hl2_misc`),
             ]);

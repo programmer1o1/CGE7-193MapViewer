@@ -1325,8 +1325,8 @@ export class SourceWorldViewRenderer {
                     continue;
 
                 // TODO(jstpierre): Re-enable entities inside the skybox once we know how to cull them.
-                bspRenderer.prepareToRenderView(renderContext, renderInstManager, this.renderObjectMask & (RenderObjectKind.WorldSpawn | RenderObjectKind.StaticProps));
-            }
+                // ^ done
+                bspRenderer.prepareToRenderView(renderContext, renderInstManager, this.renderObjectMask & (RenderObjectKind.WorldSpawn | RenderObjectKind.StaticProps | RenderObjectKind.Entities));            }
         }
 
         if (this.drawWorld) {

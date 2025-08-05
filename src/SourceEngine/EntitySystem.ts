@@ -378,7 +378,7 @@ export class BaseEntity {
         func(entitySystem, activator, value);
     }
 
-    private updateLightingData(): void {
+    public updateLightingData(): void {
         const materialParams = this.materialParams!;
 
         const modelMatrix = this.updateModelMatrix();
@@ -1432,6 +1432,12 @@ abstract class BaseProp extends BaseEntity {
         // force studio model to be visible 
         if (this.modelStudio !== null && this.shouldDraw()) {
             this.modelStudio.visible = true;
+            
+            // update lighting for moving props
+            // didn't work this is FIXME for now
+            if (this.materialParams !== null) {
+                this.updateLightingData();
+            }
         }
         
         // make sure scale is applied
@@ -2159,6 +2165,31 @@ class func_tracktrain extends BaseEntity {
     private input_resume(entitySystem: EntitySystem): void {
         if (this.speed === 0.0)
             this.setSpeed(entitySystem, this.startSpeed);
+    }
+}
+
+// this was unnecessary but i decided to keep it here anyways
+class func_physbox extends BaseEntity {
+    public static classname = `func_physbox`;
+
+    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
+        super(entitySystem, renderContext, bspRenderer, entity);
+        
+        this.registerInput('break', this.input_break.bind(this));
+        this.registerInput('disablemotion', this.input_disablemotion.bind(this));
+        this.registerInput('enablemotion', this.input_enablemotion.bind(this));
+    }
+
+    private input_break(entitySystem: EntitySystem): void {
+        this.remove();
+    }
+
+    private input_disablemotion(entitySystem: EntitySystem): void {
+        // todo: physics here
+    }
+
+    private input_enablemotion(entitySystem: EntitySystem): void {
+        // todo: physics here
     }
 }
 
@@ -4828,6 +4859,7 @@ export class EntityFactoryRegistry {
         this.registerFactory(func_door_rotating);
         this.registerFactory(func_rotating);
         this.registerFactory(func_tracktrain);
+        this.registerFactory(func_physbox);
         this.registerFactory(func_areaportalwindow);
         this.registerFactory(func_instance_io_proxy);
         this.registerFactory(logic_auto);
