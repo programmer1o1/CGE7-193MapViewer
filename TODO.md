@@ -9,5 +9,5 @@ Entity info debug
 # Bugs
 func_physboxes don't render in the skycamera (see plotmas)
 materials are black on prop_dynamics
-Animations are offset.
+officehead animation is not synced
 Fix search paths for models (i.e. hostages)

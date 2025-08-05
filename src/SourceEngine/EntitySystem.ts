@@ -1512,6 +1512,7 @@ class prop_dynamic extends BaseProp {
         this.output_onAnimationDone.parse(entity.onanimationdone);
         
         this.registerInput('setbodygroup', this.input_setbodygroup.bind(this));
+        this.registerInput('addoutput', this.input_addoutput.bind(this));
     }
     
     public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
@@ -1527,6 +1528,28 @@ class prop_dynamic extends BaseProp {
     private input_setbodygroup(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
         // todo: bodygroup
         console.log(`prop_dynamic setbodygroup: ${value}`);
+    }
+
+    private input_addoutput(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const values = value.split(' ');
+        const property = values[0];
+        if (property == 'origin'){
+            const x = parseFloat(values[1]);
+            const y = parseFloat(values[2]);
+            const z = parseFloat(values[3]);
+            const origin = vec3.fromValues(x,y,z);
+            this.setAbsOrigin(origin)
+        }
+        if (property == 'angles'){
+            const x = parseFloat(values[1]);
+            const y = parseFloat(values[2]);
+            const z = parseFloat(values[3]);
+            const angles = vec3.fromValues(x,y,z);
+            let origin = vec3.create();
+            this.getAbsOrigin(origin);
+            this.setAbsOriginAndAngles(origin, angles);
+        }
+        console.log(`prop_dynamic addoutput: ${values}`);
     }
 }
 
@@ -3322,6 +3345,7 @@ abstract class BaseLight extends BaseEntity {
     }
 }
 
+
 class light extends BaseLight { public static classname = 'light'; }
 class light_spot extends BaseLight { public static classname = 'light_spot'; }
 class light_glspot extends BaseLight { public static classname = 'light_glspot'; }
@@ -3329,47 +3353,47 @@ class light_environment extends BaseLight { public static classname = 'light_env
 
 class point_template extends BaseEntity {
     public static classname = 'point_template';
-
+    
     private preserveNames = false;
     public templateEntity: BaseEntity[] = [];
     public templateMapData: BSPEntity[] = [];
-
+    
     constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
         super(entitySystem, renderContext, bspRenderer, entity);
-
+        
         this.registerInput('forcespawn', this.input_forcespawn.bind(this));
     }
-
+    
     public createInstance(entitySystem: EntitySystem, modelMatrix: ReadonlyMat4): void {
         const mapDatas = this.templateMapData.map((mapData) => ({ ... mapData }));
         const targetMapDatas: BSPEntity[] = [];
-
+        
         // Pick new target names.
         for (let i = 0; i < mapDatas.length; i++) {
             const mapData = mapDatas[i];
             if (mapData.targetname === undefined)
                 continue;
-
+            
             const index = entitySystem.nextDynamicTemplateSpawnIndex++;
             mapData.targetname = `${mapData.targetname}&${leftPad('' + index, 4)}`;
             targetMapDatas.push(mapData);
         }
-
+        
         for (let i = 0; i < mapDatas.length; i++) {
             const mapData = mapDatas[i];
-
+            
             for (let j = 0; j < targetMapDatas.length; j++) {
                 if (mapData === targetMapDatas[j])
                     continue;
-
+                
                 const newTargetName = targetMapDatas[j].targetname;
                 assert(newTargetName.includes('&'));
                 const oldTargetName = newTargetName.slice(0, -5);
-
+                
                 for (const k in mapData) {
                     if (k === 'targetname')
                         continue;
-
+                    
                     let v: string[] | string = mapData[k];
                     if (Array.isArray(v)) {
                         v = v.map((s) => {
@@ -3385,20 +3409,20 @@ class point_template extends BaseEntity {
                         else if (v === oldTargetName)
                             v = newTargetName;
                     }
-
+                    
                     mapData[k] = v as string;
                 }
             }
         }
-
+        
         // Have our new map datas. Spawn them, and then move them relative to our matrix.
-
+        
         const worldFromThis = modelMatrix;
         const worldFromTemplate = this.updateModelMatrix();
-
+        
         for (let i = 0; i < mapDatas.length; i++) {
             const entity = entitySystem.createEntity(mapDatas[i]);
-
+            
             // Position entity in world.
             const worldFromEntity = entity.updateModelMatrix();
             mat4.invert(scratchMat4a, worldFromTemplate); // templateFromWorld
@@ -3408,10 +3432,10 @@ class point_template extends BaseEntity {
             entity.setAbsOriginAndAngles(scratchVec3a, scratchVec3b);
         }
     }
-
+    
     public override spawn(entitySystem: EntitySystem): void {
         super.spawn(entitySystem);
-
+        
         const enum SpawnFlags {
             DontRemoveTemplateEntities = 0x01,
             PreserveNames              = 0x02,
@@ -3419,30 +3443,31 @@ class point_template extends BaseEntity {
         const spawnflags: SpawnFlags = Number(fallbackUndefined(this.entity.spawnflags, '0'));
         const removeTemplateEntities = !(spawnflags & SpawnFlags.DontRemoveTemplateEntities);
         this.preserveNames = !!(spawnflags & SpawnFlags.PreserveNames);
-
+        
         for (let i = 1; i <= 16; i++) {
             const templateKeyName = `template${leftPad('' + i, 2)}`;
             const templateEntityName = this.entity[templateKeyName];
             if (templateEntityName === undefined)
                 continue;
-
+            
             const entity = entitySystem.findEntityByTargetName(templateEntityName);
             if (entity === null)
                 continue;
-
+            
             if (removeTemplateEntities)
                 entity.remove();
             else
                 this.templateEntity.push(entity);
-
+            
             this.templateMapData.push(entity.getMapData());
         }
     }
-
+    
     private input_forcespawn(entitySystem: EntitySystem): void {
         this.createInstance(entitySystem, this.updateModelMatrix());
     }
 }
+
 
 class env_entity_maker extends BaseEntity {
     public static classname = 'env_entity_maker';
@@ -4377,6 +4402,91 @@ class fog_volume extends BaseEntity {
     }
 }
 
+class point_spotlight extends BaseEntity { 
+    public static classname = 'point_spotlight';
+
+    private isOn: boolean;
+
+    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
+        super(entitySystem, renderContext, bspRenderer, entity);
+
+        this.registerInput('lighton', this.input_turnon.bind(this));
+        this.registerInput('lightoff', this.input_turnoff.bind(this));
+        this.registerInput('toggle', this.input_toggle.bind(this));
+        this.registerInput('setcolor', this.input_setcolor.bind(this));
+        this.registerInput('forceupdate', this.input_forceupdate.bind(this));
+
+    }
+
+    private input_turnon(): void {
+        this.isOn = true;
+    }
+
+    private input_turnoff(): void {
+        this.isOn = false;
+    }
+
+    private input_toggle(): void {
+        this.isOn = !this.isOn;
+    }
+
+    private input_setcolor(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        console.warn(`point_spotlight setcolor notimplemented`)
+    }
+    private input_forceupdate(): void {
+        console.warn(`point_spotlight forceupdate notimplemented`)
+    }
+}
+
+// https://developer.valvesoftware.com/wiki/Ambient_generic
+class ambient_generic extends BaseEntity { 
+    public static classname = 'ambient_generic';
+
+    private isPlaying: boolean;
+
+    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
+        super(entitySystem, renderContext, bspRenderer, entity);
+
+        this.registerInput('pitch', this.input_pitch.bind(this));
+        this.registerInput('playsound', this.input_playsound.bind(this));
+        this.registerInput('stopsound', this.input_stopsound.bind(this));
+        this.registerInput('togglesound', this.input_togglesound.bind(this));
+        this.registerInput('volume', this.input_volume.bind(this));
+        this.registerInput('fadein', this.input_fadein.bind(this));
+        this.registerInput('fadeout', this.input_fadeout.bind(this));
+
+    }
+
+    private input_pitch(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const pitch = parseInt(value);
+    }
+
+    private input_playsound(): void {
+        this.isPlaying = true;
+        console.log(this.entity.message)
+        // var audio = new Audio('audio_file.mp3');
+        // audio.play();
+    }
+
+    private input_stopsound(): void {
+        this.isPlaying = false;
+    }
+
+    private input_togglesound(): void {
+        this.isPlaying = !this.isPlaying;
+    }
+
+    private input_volume(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        console.warn(`point_spotlight setcolor notimplemented`)
+    }
+    private input_fadein(): void {
+        console.warn(`point_spotlight forceupdate notimplemented`)
+    }
+    private input_fadeout(): void {
+        console.warn(`point_spotlight forceupdate notimplemented`)
+    }
+}
+
 export class point_camera extends BaseEntity {
     public static classname = `point_camera`;
 
@@ -4737,6 +4847,8 @@ export class EntityFactoryRegistry {
         this.registerFactory(material_modify_control);
         this.registerFactory(info_overlay_accessor);
         this.registerFactory(color_correction);
+        this.registerFactory(point_spotlight);
+        this.registerFactory(ambient_generic);
         this.registerFactory(light);
         this.registerFactory(light_spot);
         this.registerFactory(light_glspot);
