@@ -9,7 +9,10 @@ export interface NamedArrayBufferSlice extends ArrayBufferSlice {
 
 function getDataStorageBaseURL(isDevelopment: boolean): string {
     // always use tf2 materials from noclip
-    return 'https://z.noclip.website';
+    // return 'https://z.noclip.website';
+
+    // always use luna's file server
+    return 'https://static.gaq9.com';
     
     // original implementation commented out for reference
     // if (isDevelopment)
