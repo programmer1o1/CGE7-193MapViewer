@@ -305,4 +305,9 @@ export class FaceLightmapUpdater {
         renderContext.debugStatistics.lightmapsBuilt++;
         this.state = FaceLightmapUpdaterState.Idle;
     }
+
+    public reset(): void {
+        this.state = FaceLightmapUpdaterState.NotReady;
+        this.lightmapStyleIntensities.fill(-1);
+    }
 }

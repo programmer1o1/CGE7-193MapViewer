@@ -237,6 +237,21 @@ export class MaterialCache {
         return parseVMT(this.filesystem, this.resolvePath(name));
     }
 
+    public clearDynamicCache(): void {
+        // clear only non-runtime textures
+        const runtimeTextures = ['_rt_Camera', '_rt_RefractTexture', '_rt_WaterRefraction', '_rt_WaterReflection', '_rt_Depth'];
+        
+        for (const [key, texture] of this.textureCache.entries()) {
+            if (!runtimeTextures.includes(key)) {
+                texture.destroy(this.device);
+                this.textureCache.delete(key);
+            }
+        }
+        
+        this.texturePromiseCache.clear();
+        this.materialPromiseCache.clear();
+    }
+
     private fetchMaterialData(path: string): Promise<VMT> {
         if (!this.materialPromiseCache.has(path))
             this.materialPromiseCache.set(path, this.fetchMaterialDataInternal(path));

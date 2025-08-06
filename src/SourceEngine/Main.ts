@@ -39,6 +39,8 @@ import { MaterialCache } from "./Materials/MaterialCache.js";
 import { MaterialProxySystem } from "./Materials/MaterialParameters.js";
 import { ProjectedLight, WorldLightingState } from "./Materials/WorldLight.js";
 
+const pakfilesPathBase = `paks`;
+
 export class LooseMount {
     private normalizedFiles: string[];
 
@@ -68,6 +70,7 @@ export class SourceFileSystem {
     public vpk: VPKMount[] = [];
     public loose: LooseMount[] = [];
     public gma: GMA[] = [];
+    private dynamicVPKMounts: Map<string, VPKMount> = new Map();
 
     constructor(private dataFetcher: DataFetcher) {
     }
@@ -95,6 +98,38 @@ export class SourceFileSystem {
         const data = await this.dataFetcher.fetchData(path);
         const gma = new GMA(data);
         this.gma.push(gma);
+    }
+
+    public async toggleVPKMount(path: string, enable: boolean): Promise<void> {
+        const key = path;
+        
+        if (enable) {
+            if (!this.dynamicVPKMounts.has(key)) {
+                const mount = await createVPKMount(this.dataFetcher, path);
+                this.dynamicVPKMounts.set(key, mount);
+                // add at the beginning so base game files take precedence for skybox
+                this.vpk.unshift(mount);
+            }
+        } else {
+            const mount = this.dynamicVPKMounts.get(key);
+            if (mount) {
+                const index = this.vpk.indexOf(mount);
+                if (index !== -1) {
+                    this.vpk.splice(index, 1);
+                }
+                this.dynamicVPKMounts.delete(key);
+            }
+        }
+    }
+
+    public clearDynamicMounts(): void {
+        for (const [key, mount] of this.dynamicVPKMounts) {
+            const index = this.vpk.indexOf(mount);
+            if (index !== -1) {
+                this.vpk.splice(index, 1);
+            }
+        }
+        this.dynamicVPKMounts.clear();
     }
 
     public resolvePath(path: string, ext: string): string {
@@ -339,7 +374,7 @@ export class SkyboxRenderer {
         }
     }
 
-    private async bindMaterial(renderContext: SourceRenderContext) {
+    public async bindMaterial(renderContext: SourceRenderContext) {
         this.materialInstances = await Promise.all([
             this.createMaterialInstance(renderContext, `skybox/${this.skyname}rt`),
             this.createMaterialInstance(renderContext, `skybox/${this.skyname}lf`),
@@ -400,7 +435,7 @@ export class SkyboxRenderer {
 export class BSPSurfaceRenderer {
     public visible = true;
     public materialInstance: BaseMaterial | null = null;
-    private lightmapManagerPage: number;
+    public lightmapManagerPage: number;
 
     constructor(public surface: BSPSurface) {
     }
@@ -413,8 +448,11 @@ export class BSPSurfaceRenderer {
             const faceIdx = this.surface.faceList[i];
             const lightmapUpdater = bspRenderer.lightmapUpdaters[faceIdx];
 
-            if (lightmapUpdater !== null)
+            if (lightmapUpdater !== null) {
+                // reset the updater before setting material when reloading
+                lightmapUpdater.reset();
                 lightmapUpdater.setMaterial(materialInstance);
+            }
         }
     }
 
@@ -520,6 +558,11 @@ export class BSPModelRenderer {
 
         for (let i = 0; i < this.surfaces.length; i++)
             this.surfaces[i].movement(renderContext);
+    }
+
+    public async reloadMaterials(bspRenderer: BSPRenderer, renderContext: SourceRenderContext): Promise<void> {
+        // re-bind materials with potentially new textures
+        await this.bindMaterials(bspRenderer, renderContext, this.surfaces[0]?.lightmapManagerPage || 0);
     }
 
     public checkFrustum(renderContext: SourceRenderContext): boolean {
@@ -856,6 +899,18 @@ export class BSPRenderer {
         renderInstManager.popTemplate();
     }
 
+    public async reloadMaterials(renderContext: SourceRenderContext): Promise<void> {
+        // reload materials for all models
+        for (const model of this.models) {
+            await model.reloadMaterials(this, renderContext);
+        }
+        
+        // reload materials for static props
+        for (const staticProp of this.staticPropRenderers) {
+            await staticProp.reloadInstance(renderContext, this);
+        }
+    }
+
     public destroy(device: GfxDevice): void {
         device.destroyBuffer(this.vertexBuffer);
         device.destroyBuffer(this.indexBuffer);
@@ -1156,6 +1211,12 @@ export class SourceRenderContext {
     public renderCache: GfxRenderCache;
     public currentPointCamera: point_camera | null = null;
     public currentShake: env_shake | null = null;
+    public useFixedTextures = false;
+    private fixedTextureVPKs = [
+        `${pakfilesPathBase}/tf2/plotmas_d`,
+        `${pakfilesPathBase}/tf2/stork`
+    ];
+    private parentRenderer: SourceRenderer | null = null;
 
     // Public settings
     public enableFog = true;
@@ -1188,6 +1249,40 @@ export class SourceRenderContext {
             // occlusion queries on WebGPU, once that's more widely deployed.
             this.enableAutoExposure = false;
         }
+    }
+
+    public setParentRenderer(renderer: SourceRenderer): void {
+        this.parentRenderer = renderer;
+    }
+
+    public async toggleFixedTextures(enable: boolean): Promise<void> {
+        this.useFixedTextures = enable;
+        
+        // toggle the VPK mounts
+        for (const vpkPath of this.fixedTextureVPKs) {
+            await this.filesystem.toggleVPKMount(vpkPath, enable);
+        }
+        
+        // clear material cache to force reload
+        this.materialCache.clearDynamicCache();
+        
+        // reload materials for all BSP renderers
+        if (this.parentRenderer) {
+            // reload skybox first if it exists
+            if (this.parentRenderer.skyboxRenderer) {
+                await this.parentRenderer.skyboxRenderer.bindMaterial(this);
+            }
+            
+            for (const bspRenderer of this.parentRenderer.bspRenderers) {
+                await bspRenderer.reloadMaterials(this);
+            }
+        }
+    }
+
+   public async cleanup(): Promise<void> {
+        // clear dynamic mounts when context is destroyed
+        this.filesystem.clearDynamicMounts();
+        this.materialCache.clearDynamicCache();
     }
 
     public crossedTime(time: number): boolean {
@@ -1693,6 +1788,7 @@ export class SourceRenderer implements SceneGfx {
     private bloomBlurYProgram: GfxProgram;
     private fullscreenPostProgram: GfxProgram;
     private fullscreenPostProgramBloom: GfxProgram;
+    private static fixedTexturesEnabled = false; 
 
     constructor(private sceneContext: SceneContext, public renderContext: SourceRenderContext) {
         // Make the reflection view a bit cheaper.
@@ -1701,6 +1797,11 @@ export class SourceRenderer implements SceneGfx {
         this.reflectViewRenderer.renderObjectMask &= ~(RenderObjectKind.DetailProps);
 
         this.renderHelper = new GfxRenderHelper(renderContext.device, sceneContext, renderContext.renderCache);
+        renderContext.setParentRenderer(this);
+
+        if (SourceRenderer.fixedTexturesEnabled) {
+            renderContext.toggleFixedTextures(true).catch(console.error);
+        }
 
         this.luminanceHistogram = new LuminanceHistogram(this.renderContext.renderCache);
 
@@ -1822,6 +1923,33 @@ export class SourceRenderer implements SceneGfx {
             const v = enableExtensiveWater.checked;
             this.renderContext.enableExpensiveWater = v;
         };
+
+        const useFixedTextures = new UI.Checkbox('Use Fixed Textures (CGE)', SourceRenderer.fixedTexturesEnabled);
+        let isTogglingTextures = false;
+        
+        useFixedTextures.onchanged = async () => {
+            if (isTogglingTextures) return;
+            
+            const v = useFixedTextures.checked;
+            isTogglingTextures = true;
+            useFixedTextures.elem.style.opacity = '0.5';
+            useFixedTextures.elem.style.pointerEvents = 'none';
+            
+            try {
+                await this.renderContext.toggleFixedTextures(v);
+                SourceRenderer.fixedTexturesEnabled = v; // save state
+            } catch (e) {
+                console.error('Failed to toggle fixed textures:', e);
+                // revert checkbox on error
+                useFixedTextures.checked = !v;
+            } finally {
+                isTogglingTextures = false;
+                useFixedTextures.elem.style.opacity = '1';
+                useFixedTextures.elem.style.pointerEvents = 'auto';
+            }
+        };
+        renderHacksPanel.contents.appendChild(useFixedTextures.elem);
+
         renderHacksPanel.contents.appendChild(enableExtensiveWater.elem);
         const showToolMaterials = new UI.Checkbox('Show Tool-only Materials', false);
         showToolMaterials.onchanged = () => {
@@ -2116,6 +2244,8 @@ export class SourceRenderer implements SceneGfx {
     }
 
     public destroy(device: GfxDevice): void {
+        this.renderContext.cleanup().catch(console.error);
+
         this.renderHelper.destroy();
         this.renderContext.destroy(device);
         this.luminanceHistogram.destroy(device);

@@ -569,6 +569,17 @@ export class StaticPropRenderer {
         }
     }
 
+    public async reloadInstance(renderContext: SourceRenderContext, bspRenderer: BSPRenderer): Promise<void> {
+        // destroy old instance
+        if (this.studioModelInstance !== null) {
+            this.studioModelInstance.destroy(renderContext.device);
+            this.studioModelInstance = null;
+        }
+        
+        // recreate with potentially new textures
+        await this.createInstance(renderContext, bspRenderer);
+    }
+
     public movement(renderContext: SourceRenderContext): void {
         if (this.studioModelInstance !== null)
             this.studioModelInstance.movement(renderContext);

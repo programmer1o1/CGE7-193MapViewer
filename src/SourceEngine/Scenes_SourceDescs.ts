@@ -38,16 +38,14 @@ export class CGESceneDesc implements SceneDesc {
         const filesystem = await context.dataShare.ensureObject(`${pakfilesPathBase}/SourceFileSystem`, async () => {
             const filesystem = new SourceFileSystem(context.dataFetcher);
             // According to gameinfo.txt, it first mounts TF2 and then HL2.
-            await Promise.all([
+            const vpkMounts = [
                 filesystem.createVPKMount(`${pakfilesPathBase}/tf2/tf2_textures`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/tf2/tf2_misc`),
-
-                // uncomment these, when you implement a toggleable option for these
-                //filesystem.createVPKMount(`${pakfilesPathBase}/tf2/plotmas_d`),
-                //filesystem.createVPKMount(`${pakfilesPathBase}/tf2/stork`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/hl2/hl2_textures`),
                 filesystem.createVPKMount(`${pakfilesPathBase}/hl2/hl2_misc`),
-            ]);
+            ];
+            
+            await Promise.all(vpkMounts);
             return filesystem;
         });
 
