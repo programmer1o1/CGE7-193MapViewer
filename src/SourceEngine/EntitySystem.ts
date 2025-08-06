@@ -145,8 +145,8 @@ export class BaseEntity {
 
     // Animation Playback (should probably be split out to a different class)
     private seqdefaultindex = -1;
-    private seqindex = 0;
-    private seqtime = 0;
+    public seqindex = 0;
+    public seqtime = 0;
     private seqplay: boolean = false;
     private seqrate = 1;
     private holdAnimation: boolean = false;
@@ -568,6 +568,10 @@ export class BaseEntity {
         }
 
         return this.modelMatrix;
+    }
+
+    public async reloadMaterials(renderContext: SourceRenderContext): Promise<void> {
+        // override in subclasses that have materials
     }
 
     public movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
@@ -1531,6 +1535,35 @@ class prop_dynamic extends BaseProp {
         }
     }
     
+    public override async reloadMaterials(renderContext: SourceRenderContext): Promise<void> {
+        if (this.modelStudio !== null) {
+            // store current animation state
+            const savedSeqIndex = this.seqindex;
+            const savedSeqTime = this.seqtime;
+            const savedSkin = this.skin;
+            
+            // reload all materials in the studio model instance
+            for (let i = 0; i < this.modelStudio.bodyPartInstance.length; i++) {
+                const bodyPartInstance = this.modelStudio.bodyPartInstance[i];
+                for (let j = 0; j < bodyPartInstance.lodInstance.length; j++) {
+                    const lodInstance = bodyPartInstance.lodInstance[j];
+                    for (let k = 0; k < lodInstance.meshInstance.length; k++) {
+                        const meshInstance = lodInstance.meshInstance[k];
+                        // Force reload of materials
+                        await meshInstance.bindMaterial(renderContext, savedSkin);
+                    }
+                }
+            }
+            
+            // restore animation state
+            this.seqindex = savedSeqIndex;
+            this.seqtime = savedSeqTime;
+            
+            // update lighting data
+            this.updateLightingData();
+        }
+    }
+
     private input_setbodygroup(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
         // todo: bodygroup
         console.log(`prop_dynamic setbodygroup: ${value}`);

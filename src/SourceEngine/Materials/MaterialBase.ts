@@ -141,7 +141,7 @@ layout(std140) uniform ub_SkinningParams {
 #define u_ToneMapScale   (u_SceneMisc[0].w)
 
 #define u_FogColor       (u_SceneMisc[1].xyz)
-#define u_Fullbright     (u_SceneMisc[1].w) 
+#define u_FullbrightMode (u_SceneMisc[1].w) 
 
 #define u_FogStart       (u_SceneMisc[2].x)
 #define u_FogEnd         (u_SceneMisc[2].y)
@@ -219,12 +219,16 @@ vec4 DebugColorTexture(in vec4 t_TextureSample) {
     t_TextureSample.rgb = vec3(0.5);
 #endif
 
+    // mat_fullbright 2 - lighting only mode
+    if (u_FullbrightMode == 2.0)
+        t_TextureSample.rgb = vec3(0.5);
+
     return t_TextureSample;
 }
 
 vec3 SampleLightmapTexture(in vec4 t_TextureSample) {
     // runtime fullbright check
-    if (u_Fullbright > 0.0)
+    if (u_FullbrightMode == 1.0)
         return vec3(1.0);
 
     return t_TextureSample.rgb * t_TextureSample.a * ${glslGenerateFloat(RGBM_SCALE)};
@@ -308,11 +312,10 @@ export class ToneMapParams {
     }
 }
 
-function fillSceneParams(d: Float32Array, offs: number, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams>, fullbright: boolean = false): number {
-    const baseOffs = offs;
+function fillSceneParams(d: Float32Array, offs: number, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams>, fullbrightMode: number = 0): number {    const baseOffs = offs;
     offs += fillMatrix4x4(d, offs, view.clipFromWorldMatrix);
     offs += fillVec3v(d, offs, view.cameraPos, toneMapParams.toneMapScale);
-    offs += fillColor(d, offs, fogParams.color, fullbright ? 1.0 : 0.0);  // pack fullbright in alpha
+    offs += fillColor(d, offs, fogParams.color, fullbrightMode); // pass fullbright mode in alpha
     offs += fillVec4(d, offs, fogParams.start, fogParams.end, fogParams.maxdensity);
     return offs - baseOffs;
 }
@@ -327,10 +330,10 @@ export function fillScaleBias(d: Float32Array, offs: number, m: ReadonlyMat4): n
     return fillVec4(d, offs, scaleS, scaleT, transS, transT);
 }
 
-export function fillSceneParamsOnRenderInst(renderInst: GfxRenderInst, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams> = view.fogParams, fullbright: boolean = false): void {
+export function fillSceneParamsOnRenderInst(renderInst: GfxRenderInst, view: Readonly<SourceEngineView>, toneMapParams: Readonly<ToneMapParams>, fogParams: Readonly<FogParams> = view.fogParams, fullbrightMode: number = 0): void {
     let offs = renderInst.allocateUniformBuffer(MaterialShaderTemplateBase.ub_SceneParams, 28);
     const d = renderInst.mapUniformBufferF32(MaterialShaderTemplateBase.ub_SceneParams);
-    fillSceneParams(d, offs, view, toneMapParams, fogParams, fullbright);
+    fillSceneParams(d, offs, view, toneMapParams, fogParams, fullbrightMode);
 }
 
 export class EntityMaterialParameters {
@@ -411,6 +414,9 @@ export abstract class BaseMaterial {
             return false;
 
         if (this.paramGetBoolean('$decal') && !renderContext.showDecalMaterials)
+            return false;
+
+        if (renderContext.fullbrightMode === 2 && this.paramGetBoolean('$no_fullbright'))
             return false;
 
         if (renderContext.currentView.viewType === SourceEngineViewType.ShadowMap) {
@@ -689,6 +695,7 @@ export abstract class BaseMaterial {
         p['$decal']                        = new P.ParameterBoolean(false, false);
         p['$decalscale']                   = new P.ParameterNumber(1);
         p['$model']                        = new P.ParameterBoolean(false, false);
+        p['$no_fullbright']                = new P.ParameterBoolean(false, false);
 
         // Base parameters
         p['$basetexture']                  = new P.ParameterTexture(true);

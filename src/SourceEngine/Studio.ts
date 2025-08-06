@@ -1842,7 +1842,7 @@ class StudioModelMeshInstance {
         return SkinningMode.None;
     }
 
-    private async bindMaterial(renderContext: SourceRenderContext, skin: number = 0): Promise<void> {
+    public async bindMaterial(renderContext: SourceRenderContext, skin: number = 0): Promise<void> {
         const materialInstance = await renderContext.materialCache.createMaterialInstance(this.meshData.materialNames[skin]);
         materialInstance.entityParams = this.entityParams;
         materialInstance.skinningMode = this.skinningMode;
@@ -2126,7 +2126,7 @@ export class StudioModelInstance {
     public attachmentMatrix: mat4[];
     public viewTarget = vec3.create();
 
-    private bodyPartInstance: StudioModelBodyPartInstance[] = [];
+    public bodyPartInstance: StudioModelBodyPartInstance[] = [];
     private viewBB: AABB;
 
     constructor(renderContext: SourceRenderContext, public modelData: StudioModelData, materialParams: EntityMaterialParameters) {

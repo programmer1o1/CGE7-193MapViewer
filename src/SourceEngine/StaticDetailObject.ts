@@ -570,6 +570,9 @@ export class StaticPropRenderer {
     }
 
     public async reloadInstance(renderContext: SourceRenderContext, bspRenderer: BSPRenderer): Promise<void> {
+        // store lighting data before destroying
+        const savedLightCache = this.materialParams.lightCache;
+        
         // destroy old instance
         if (this.studioModelInstance !== null) {
             this.studioModelInstance.destroy(renderContext.device);
@@ -578,6 +581,11 @@ export class StaticPropRenderer {
         
         // recreate with potentially new textures
         await this.createInstance(renderContext, bspRenderer);
+        
+        // restore lighting data
+        if (this.studioModelInstance !== null && savedLightCache !== null) {
+            this.materialParams.lightCache = savedLightCache;
+        }
     }
 
     public movement(renderContext: SourceRenderContext): void {

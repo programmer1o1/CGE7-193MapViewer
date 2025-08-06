@@ -819,7 +819,7 @@ export class BSPRenderer {
         const template = renderInstManager.pushTemplate();
         template.setVertexInput(this.inputLayout, this.vertexBufferDescriptors, this.indexBufferDescriptor);
 
-        fillSceneParamsOnRenderInst(template, renderContext.currentView, renderContext.toneMapParams, renderContext.currentView.fogParams, renderContext.fullbright);
+        fillSceneParamsOnRenderInst(template, renderContext.currentView, renderContext.toneMapParams, renderContext.currentView.fogParams, renderContext.fullbrightMode);
 
         // Render the world-spawn model.
         if (!!(kinds & RenderObjectKind.WorldSpawn)) {
@@ -908,6 +908,16 @@ export class BSPRenderer {
         // reload materials for static props
         for (const staticProp of this.staticPropRenderers) {
             await staticProp.reloadInstance(renderContext, this);
+        }
+        
+        // reload materials for entities (like prop_dynamic)
+        for (const entity of this.entitySystem.entities) {
+            await entity.reloadMaterials(renderContext);
+            
+            // fix: update lighting data after reloading materials
+            if (entity.materialParams !== null) {
+                entity.updateLightingData();
+            }
         }
     }
 
@@ -1228,10 +1238,14 @@ export class SourceRenderContext {
     public showTriggerDebug = false;
     public showDecalMaterials = true;
     public shadowMapSize = 512;
-    public fullbright = false;  
+    public fullbrightMode = 0; // 0 = off, 1 = fullbright, 2 = lighting only
     public enableSkyBleed = true; 
 
     public debugStatistics = new DebugStatistics();
+
+    get fullbright(): boolean {
+        return this.fullbrightMode === 1;
+    }
 
     constructor(public device: GfxDevice, loadContext: SourceLoadContext) {
         this.entityFactoryRegistry = loadContext.entityFactoryRegistry;
@@ -1903,12 +1917,34 @@ export class SourceRenderer implements SceneGfx {
             this.renderContext.colorCorrection.setEnabled(v);
         };
 
-        const fullbright = new UI.Checkbox('Fullbright', false);
-        fullbright.onchanged = () => {
-            const v = fullbright.checked;
-            this.renderContext.fullbright = v;
+        const fullbrightLabel = document.createElement('div');
+        fullbrightLabel.textContent = 'Fullbright Mode:';
+        fullbrightLabel.style.fontWeight = 'bold';
+        renderHacksPanel.contents.appendChild(fullbrightLabel);
+        
+        const fullbrightSelect = document.createElement('select');
+        fullbrightSelect.style.width = '100%';
+        fullbrightSelect.style.marginBottom = '10px';
+        
+        const fullbrightOptions = [
+            { value: '0', text: 'Off' },
+            { value: '1', text: 'Fullbright (mat_fullbright 1)' },
+            { value: '2', text: 'Lighting Only (mat_fullbright 2)' }
+        ];
+        
+        for (const option of fullbrightOptions) {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.text;
+            fullbrightSelect.appendChild(opt);
+        }
+        
+        fullbrightSelect.value = String(this.renderContext.fullbrightMode);
+        fullbrightSelect.onchange = () => {
+            this.renderContext.fullbrightMode = parseInt(fullbrightSelect.value);
         };
-        renderHacksPanel.contents.appendChild(fullbright.elem);
+        
+        renderHacksPanel.contents.appendChild(fullbrightSelect);
         
         const enableSkyBleed = new UI.Checkbox('Hall of Mirrors (Missing Skybox)', true);
         enableSkyBleed.onchanged = () => {
