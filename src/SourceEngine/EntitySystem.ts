@@ -2875,7 +2875,11 @@ export class trigger_multiple extends BaseEntity {
         }
     }
 
-    public activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
+    public activateDebug(entitySystem: EntitySystem, activator: BaseEntity): void {
+        this.onStartTouch(entitySystem, activator);
+    }
+
+    protected activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
         this.output_onTrigger.fire(entitySystem, this, activator);
     }
 
@@ -2942,7 +2946,7 @@ export class trigger_multiple extends BaseEntity {
 export class trigger_once extends trigger_multiple {
     public static override classname = `trigger_once`;
 
-    public override activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
+    protected override activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
         super.activateTrigger(entitySystem, activator);
         this.remove();
     }

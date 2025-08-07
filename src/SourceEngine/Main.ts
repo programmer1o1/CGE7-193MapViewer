@@ -1979,12 +1979,7 @@ export class SourceRenderer implements SceneGfx {
             this.renderContext.showDecalMaterials = v;
         };
         renderHacksPanel.contents.appendChild(showDecalMaterials.elem);
-        const showTriggerDebug = new UI.Checkbox('Show Trigger Debug', false);
-        showTriggerDebug.onchanged = () => {
-            const v = showTriggerDebug.checked;
-            this.renderContext.showTriggerDebug = v;
-        };
-        renderHacksPanel.contents.appendChild(showTriggerDebug.elem);
+        
         const showEntityDebug = new UI.Checkbox('Show Entity Debug', false);
         showEntityDebug.onchanged = () => {
             const v = showEntityDebug.checked;
@@ -2005,7 +2000,13 @@ export class SourceRenderer implements SceneGfx {
         const sceneTriggersPanel = new UI.Panel()
         sceneTriggersPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
         sceneTriggersPanel.setTitle(UI.TRIGGER_ICON, 'Scene Triggers');
-        sceneTriggersPanel.setEnabled(false)
+        
+        const showTriggerDebug = new UI.Checkbox('Show Trigger Debug', false);
+        showTriggerDebug.onchanged = () => {
+            const v = showTriggerDebug.checked;
+            this.renderContext.showTriggerDebug = v;
+        };
+        sceneTriggersPanel.contents.appendChild(showTriggerDebug.elem);
         
         for (const bspr of this.bspRenderers){
             for (const ent of bspr.entitySystem.entities){
@@ -2015,7 +2016,7 @@ export class SourceRenderer implements SceneGfx {
                     const triggerButton = new UI.Button(label, 'Trigger!')
                     triggerButton.setCallback(()=>{
                         if (ent.alive){
-                            ent.activateTrigger(bspr.entitySystem, bspr.entitySystem.getLocalPlayer())
+                            ent.activateDebug(bspr.entitySystem, bspr.entitySystem.getLocalPlayer())
                         }
                         if (ent instanceof trigger_once){
                             triggerButton.elem.remove()
