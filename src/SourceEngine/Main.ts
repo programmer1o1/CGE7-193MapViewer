@@ -21,7 +21,7 @@ import { arrayRemove, assert, assertExists, nArray } from "../util.js";
 import { SceneGfx, ViewerRenderInput } from "../viewer.js";
 import { ZipFile, decompressZipFileEntry, parseZipFile } from "../ZipFile.js";
 import { BSPFile, BSPFileVariant, Model, BSPSurface } from "./BSPFile.js";
-import { BaseEntity, calcFrustumViewProjection, EntityFactoryRegistry, EntitySystem, env_projectedtexture, env_shake, point_camera, sky_camera, worldspawn } from "./EntitySystem.js";
+import { BaseEntity, calcFrustumViewProjection, EntityFactoryRegistry, EntitySystem, env_projectedtexture, env_shake, point_camera, sky_camera, trigger_multiple, trigger_once, trigger_look, worldspawn } from "./EntitySystem.js";
 import { DetailPropLeafRenderer, StaticPropRenderer } from "./StaticDetailObject.js";
 import { StudioModelCache } from "./Studio.js";
 import { createVPKMount, VPKMount } from "./VPK.js";
@@ -1889,7 +1889,7 @@ export class SourceRenderer implements SceneGfx {
 
     public createPanels(): UI.Panel[] {
         const renderHacksPanel = new UI.Panel();
-        renderHacksPanel.customHeaderBackgroundColor = UI.COOL_BLUE_COLOR;
+        renderHacksPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
         renderHacksPanel.setTitle(UI.RENDER_HACKS_ICON, 'Render Hacks');
         const enableFog = new UI.Checkbox('Enable Fog', true);
         enableFog.onchanged = () => {
@@ -2002,7 +2002,34 @@ export class SourceRenderer implements SceneGfx {
         };
         renderHacksPanel.contents.appendChild(showDebugThumbnails.elem);
 
-        return [renderHacksPanel];
+        const sceneTriggersPanel = new UI.Panel()
+        sceneTriggersPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
+        sceneTriggersPanel.setTitle(UI.TRIGGER_ICON, 'Scene Triggers');
+        sceneTriggersPanel.setEnabled(false)
+        
+        for (const bspr of this.bspRenderers){
+            for (const ent of bspr.entitySystem.entities){
+                if (ent instanceof trigger_multiple) {
+                    sceneTriggersPanel.setEnabled(true)
+                    const label = ent.targetName ? ent.targetName : "Unnamed Trigger";
+                    const triggerButton = new UI.Button(label, 'Trigger!')
+                    triggerButton.setCallback(()=>{
+                        if (ent.alive){
+                            ent.activateTrigger(bspr.entitySystem, bspr.entitySystem.getLocalPlayer())
+                        }
+                        if (ent instanceof trigger_once){
+                            triggerButton.elem.remove()
+                            if (sceneTriggersPanel.contents.children.length == 0){
+                                sceneTriggersPanel.setEnabled(false)
+                            }
+                        }
+                    })
+                    sceneTriggersPanel.contents.appendChild(triggerButton.elem);
+                }
+            }
+        }
+
+        return [renderHacksPanel, sceneTriggersPanel];
     }
 
     public prepareToRender(viewerInput: ViewerRenderInput): void {

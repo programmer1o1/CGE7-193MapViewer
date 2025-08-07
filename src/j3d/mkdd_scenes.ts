@@ -46,7 +46,7 @@ class MKDDRenderer implements Viewer.SceneGfx {
 
     public createPanels(): UI.Panel[] {
         const renderHacksPanel = new UI.Panel();
-        renderHacksPanel.customHeaderBackgroundColor = UI.COOL_BLUE_COLOR;
+        renderHacksPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
         renderHacksPanel.setTitle(UI.RENDER_HACKS_ICON, 'Render Hacks');
         const mirrorCheckbox = new UI.Checkbox('Mirror Courses');
         mirrorCheckbox.onchanged = () => {

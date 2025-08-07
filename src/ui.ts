@@ -20,7 +20,7 @@ import logoURL from './assets/logo.png';
 import { AntialiasingMode } from './gfx/helpers/RenderGraphHelpers.js';
 
 export const HIGHLIGHT_COLOR = 'rgba(0, 255, 0, 1)';
-export const COOL_BLUE_COLOR = 'rgba(215, 20, 143, 1)';
+export const COOL_PINK_COLOR = 'rgba(215, 20, 143, 1)';
 export const PANEL_BG_COLOR = 'rgb(0, 15, 0)';
 
 export function createDOMFromString(s: string): DocumentFragment {
@@ -53,6 +53,7 @@ const DICE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" w
 export const LAYER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" height="20" fill="white"><g transform="translate(0,-1036.3622)"><path d="m 8,1039.2486 -0.21875,0.125 -4.90625,2.4375 5.125,2.5625 5.125,-2.5625 L 8,1039.2486 z m -3,4.5625 -2.125,0.9688 5.125,2.5625 5.125,-2.5625 -2.09375,-0.9688 -3.03125,1.5 -1,-0.5 -0.90625,-0.4375 L 5,1043.8111 z m 0,3 -2.125,0.9688 5.125,2.5625 5.125,-2.5625 -2.09375,-0.9688 -3.03125,1.5 -1,-0.5 -0.90625,-0.4375 L 5,1046.8111 z"/></g></svg>`;
 export const TIME_OF_DAY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" height="20" fill="white"><path d="M50,93.4C74,93.4,93.4,74,93.4,50C93.4,26,74,6.6,50,6.6C26,6.6,6.6,26,6.6,50C6.6,74,26,93.4,50,93.4z M37.6,22.8  c-0.6,2.4-0.9,5-0.9,7.6c0,18.2,14.7,32.9,32.9,32.9c2.6,0,5.1-0.3,7.6-0.9c-4.7,10.3-15.1,17.4-27.1,17.4  c-16.5,0-29.9-13.4-29.9-29.9C20.3,37.9,27.4,27.5,37.6,22.8z"/></svg>`;
 export const RENDER_HACKS_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 105" height="20" fill="white"><path d="M95,5v60H65c0-16.6-13.4-30-30-30V5H95z"/><path d="M65,65c0,16.6-13.4,30-30,30C18.4,95,5,81.6,5,65c0-16.6,13.4-30,30-30v30H65z"/></svg>`;
+export const TRIGGER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" height="20" fill="none" stroke="white" stroke-width="12"><polygon points="50.00,94.00 11.89,72.00 11.89,28.00 50.00,6.00 88.11,28.00 88.11,72.00" /><polygon points="88.11,28.00 50,50 50.00,94.00 50,50 11.89,28.00 50,50" /></svg>`;
 export const SAND_CLOCK_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" height="20" fill="white"><g><path d="M79.3,83.3h-6.2H24.9h-6.2c-1.7,0-3,1.3-3,3s1.3,3,3,3h60.6c1.7,0,3-1.3,3-3S81,83.3,79.3,83.3z"/><path d="M18.7,14.7h6.2h48.2h6.2c1.7,0,3-1.3,3-3s-1.3-3-3-3H18.7c-1.7,0-3,1.3-3,3S17,14.7,18.7,14.7z"/><path d="M73.1,66c0-0.9-0.4-1.8-1.1-2.4L52.8,48.5L72,33.4c0.7-0.6,1.1-1.4,1.1-2.4V20.7H24.9V31c0,0.9,0.4,1.8,1.1,2.4l19.1,15.1   L26,63.6c-0.7,0.6-1.1,1.4-1.1,2.4v11.3h48.2V66z"/></g></svg>';
 export const VR_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" height="20" fill="white"><g><path d="M29,8H3A1,1,0,0,0,2,9V23a1,1,0,0,0,1,1H13a1,1,0,0,0,1-.83l.66-4A1.36,1.36,0,0,1,16,18a1.38,1.38,0,0,1,1.36,1.26L18,23.17A1,1,0,0,0,19,24H29a1,1,0,0,0,1-1V9A1,1,0,0,0,29,8ZM8.5,19A3.5,3.5,0,1,1,12,15.5,3.5,3.5,0,0,1,8.5,19Zm15,0A3.5,3.5,0,1,1,27,15.5,3.5,3.5,0,0,1,23.5,19Z"/></g></svg>`;
 export const CUTSCENE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 142.448 142.448" height="20" fill="white"><g><path d="M142.411,68.9C141.216,31.48,110.968,1.233,73.549,0.038c-20.361-0.646-39.41,7.104-53.488,21.639 C6.527,35.65-0.584,54.071,0.038,73.549c1.194,37.419,31.442,67.667,68.861,68.861c0.779,0.025,1.551,0.037,2.325,0.037 c19.454,0,37.624-7.698,51.163-21.676C135.921,106.799,143.033,88.377,142.411,68.9z M111.613,110.336 c-10.688,11.035-25.032,17.112-40.389,17.112c-0.614,0-1.228-0.01-1.847-0.029c-29.532-0.943-53.404-24.815-54.348-54.348 c-0.491-15.382,5.122-29.928,15.806-40.958c10.688-11.035,25.032-17.112,40.389-17.112c0.614,0,1.228,0.01,1.847,0.029 c29.532,0.943,53.404,24.815,54.348,54.348C127.91,84.76,122.296,99.306,111.613,110.336z"></path> <path d="M94.585,67.086L63.001,44.44c-3.369-2.416-8.059-0.008-8.059,4.138v45.293 c0,4.146,4.69,6.554,8.059,4.138l31.583-22.647C97.418,73.331,97.418,69.118,94.585,67.086z"></path> </g></svg>`
@@ -728,12 +729,69 @@ export class Checkbox implements Widget {
     }
 }
 
+export class Button implements Widget {
+    public elem: HTMLElement;
+    public pressed: boolean = false;
+    
+    private toplevel: HTMLElement;
+    private label: HTMLElement;
+    private emblem: HTMLElement;
+    private callback:(()=>void)|null
+
+    constructor(label: string = '', buttonLabel:string = '', callback:(()=>void) | null=null) {
+        this.callback = callback
+        
+        this.toplevel = document.createElement('div');
+        this.toplevel.style.display = 'grid';
+        this.toplevel.style.gridTemplateColumns = '1fr auto';
+        this.toplevel.style.alignItems = 'center';
+        
+        this.label = document.createElement('div');
+        this.label.style.userSelect = 'none';
+        this.toplevel.appendChild(this.label);
+        
+        this.emblem = document.createElement('div');
+        // this.emblem.style.width = '10px';
+        // this.emblem.style.height = '10px';
+        this.emblem.style.background = HIGHLIGHT_COLOR;
+        this.emblem.style.justifySelf = 'center';
+        this.emblem.style.margin = '4px';
+        this.emblem.style.padding = '0px 4px';
+        this.emblem.style.cursor = 'pointer';
+        this.emblem.style.fontWeight = `bold`;
+        this.emblem.style.lineHeight = `24px`;
+        this.emblem.style.color = 'black';
+        this.emblem.textContent = buttonLabel;
+        this.emblem.onclick = this.onPress.bind(this);
+        this.toplevel.appendChild(this.emblem);
+
+        this.setLabel(label);
+
+        this.elem = this.toplevel;
+    }
+
+    public onPress(){
+        if (this.callback){
+            this.callback()
+        }
+    }
+
+    public setCallback(callback:()=>void){
+        this.callback = callback
+    }
+
+    public setLabel(text: string): void {
+        this.label.textContent = text;
+    }
+}
+
 export class Panel implements Widget {
     public elem: HTMLElement;
 
     public expanded: boolean | null = null;
     public manuallyExpanded: boolean = false;
     public autoClosed: boolean = false;
+    public enabled: boolean = true;
     public customHeaderBackgroundColor: string = '';
     protected header: HTMLElement;
     protected headerContainer: HTMLElement;
@@ -831,6 +889,18 @@ export class Panel implements Widget {
         }
     }
 
+    public setEnabled(v: boolean) {
+        this.enabled = v
+        this.syncHeaderStyle()
+        if (!v){
+            this.setExpanded(false)
+            this.header.style.cursor = 'default';
+        } else {
+            this.header.style.cursor = 'pointer';
+        }
+
+    }
+
     public setVisible(v: boolean) {
         this.toplevel.style.display = v ? 'grid' : 'none';
     }
@@ -848,7 +918,11 @@ export class Panel implements Widget {
     protected syncHeaderStyle() {
         if (this.customHeaderBackgroundColor) {
             this.svgIcon.style.fill = '';
-            this.header.style.backgroundColor = this.customHeaderBackgroundColor;
+            if (this.enabled){
+                this.header.style.backgroundColor = this.customHeaderBackgroundColor;
+            } else {
+                this.header.style.backgroundColor = PANEL_BG_COLOR;
+            }
             this.header.style.color = 'white';
         } else {
             this.svgIcon.style.fill = this.expanded ? 'black' : '';
@@ -869,6 +943,7 @@ export class Panel implements Widget {
     }
 
     public setExpanded(v: boolean, focus: boolean = true) {
+        if (!this.enabled) v = false;
         this.manuallyExpanded = v;
         this.syncExpanded();
         if (this.expanded && focus)
@@ -2238,7 +2313,7 @@ export class LayerPanel extends Panel {
 
     constructor(layers: Layer[] | null = null) {
         super();
-        this.customHeaderBackgroundColor = COOL_BLUE_COLOR;
+        this.customHeaderBackgroundColor = COOL_PINK_COLOR;
         this.setTitle(LAYER_ICON, 'Layers');
         this.multiSelect = new MultiSelect();
         this.multiSelect.onitemchanged = this._onItemChanged.bind(this);
