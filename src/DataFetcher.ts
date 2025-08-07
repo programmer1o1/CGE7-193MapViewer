@@ -12,7 +12,7 @@ function getDataStorageBaseURL(isDevelopment: boolean): string {
     // return 'https://z.noclip.website';
 
     // always use luna's file server
-    return 'https://static.gaq9.com';
+    return 'https://cdn.gaq9.com';
     
     // original implementation commented out for reference
     // if (isDevelopment)
