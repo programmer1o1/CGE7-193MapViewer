@@ -732,14 +732,16 @@ export class Checkbox implements Widget {
 export class Button implements Widget {
     public elem: HTMLElement;
     public pressed: boolean = false;
+    public enabled: boolean = true;
     
     private toplevel: HTMLElement;
     private label: HTMLElement;
     private emblem: HTMLElement;
-    private callback:(()=>void)|null
 
-    constructor(label: string = '', buttonLabel:string = '', callback:(()=>void) | null=null) {
-        this.callback = callback
+    public onpress_callback :(()=>void) | null
+    public onrelease_callback :(()=>void) | null
+
+    constructor(label: string = '', buttonLabel:string = '') {
         
         this.toplevel = document.createElement('div');
         this.toplevel.style.display = 'grid';
@@ -762,23 +764,53 @@ export class Button implements Widget {
         this.emblem.style.lineHeight = `24px`;
         this.emblem.style.color = 'black';
         this.emblem.textContent = buttonLabel;
-        this.emblem.onclick = this.onPress.bind(this);
+        this.emblem.style.userSelect = 'none';
+        this.emblem.onmousedown = this.onPress.bind(this);
+        this.emblem.onmouseup = this.onRelease.bind(this);
         this.toplevel.appendChild(this.emblem);
-
+        
         this.setLabel(label);
-
+        
         this.elem = this.toplevel;
     }
 
-    public onPress(){
-        if (this.callback){
-            this.callback()
+    public setEnabled(v:boolean):void{
+        this.enabled = v
+        if (v){
+            this.emblem.style.background = HIGHLIGHT_COLOR
+            this.emblem.style.color = 'black';
+            this.emblem.style.cursor = 'pointer'
+        } else {
+            this.emblem.style.background = PANEL_BG_COLOR
+            this.emblem.style.color = 'grey';
+            this.emblem.style.cursor = 'default'
         }
     }
 
-    public setCallback(callback:()=>void){
-        this.callback = callback
+    public onPress() {
+        if (!this.enabled) return;
+        this.pressed = true
+        if(this.onpress_callback) {this.onpress_callback()}
+        this.emblem.style.background = PANEL_BG_COLOR
+        this.emblem.style.color = 'white';
     }
+    
+    public onRelease() {
+        if (!this.pressed) return;
+        if (this.onrelease_callback) {this.onrelease_callback()}
+        this.pressed = false
+        if (!this.enabled) return;
+        this.emblem.style.background  = HIGHLIGHT_COLOR
+        this.emblem.style.color = 'BLACK';
+    }
+    
+    public setOnPress(callback: (()=>void)){
+        this.onpress_callback = callback.bind(this);
+    }
+    public setOnRelease(callback: (()=>void)){
+        this.onrelease_callback = callback.bind(this);
+    }
+
 
     public setLabel(text: string): void {
         this.label.textContent = text;

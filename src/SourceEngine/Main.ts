@@ -2014,13 +2014,17 @@ export class SourceRenderer implements SceneGfx {
                     sceneTriggersPanel.setEnabled(true)
                     const label = ent.targetName ? ent.targetName : "Unnamed Trigger";
                     const triggerButton = new UI.Button(label, 'Trigger!')
-                    triggerButton.setCallback(()=>{
+                    ent.debugButton = triggerButton;
+                    triggerButton.setOnPress(()=>{
                         if (ent.alive){
                             ent.activateDebug(bspr.entitySystem, bspr.entitySystem.getLocalPlayer())
                         }
+                    })
+                    triggerButton.setOnRelease(()=>{
+                        ent.deactivateDebug(bspr.entitySystem, bspr.entitySystem.getLocalPlayer())
                         if (ent instanceof trigger_once){
-                            triggerButton.elem.remove()
-                            if (sceneTriggersPanel.contents.children.length == 0){
+                            triggerButton.setEnabled(false);
+                            if (sceneTriggersPanel.contents.children.length == 1){
                                 sceneTriggersPanel.setEnabled(false)
                             }
                         }

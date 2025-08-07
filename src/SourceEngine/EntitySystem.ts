@@ -23,6 +23,7 @@ import { EntityMaterialParameters, FogParams, BaseMaterial } from './Materials/M
 import { ParameterReference, paramSetNum } from './Materials/MaterialParameters.js';
 import { LightCache, worldLightingCalcColorForPoint } from './Materials/WorldLight.js';
 import { makeStaticDataBuffer } from '../gfx/helpers/BufferHelpers.js';
+import { Button } from '../ui.js';
 
 type EntityMessageValue = string;
 
@@ -2829,6 +2830,9 @@ export class trigger_multiple extends BaseEntity {
     private triggerAABB: AABB | null = null;
     private isPlayerTouching = false;
 
+    private debugTriggered = false;
+    public debugButton: Button | null = null;
+
     private output_onTrigger = new EntityOutput();
     private output_onStartTouch = new EntityOutput();
     private output_onStartTouchAll = new EntityOutput();
@@ -2878,6 +2882,9 @@ export class trigger_multiple extends BaseEntity {
     public activateDebug(entitySystem: EntitySystem, activator: BaseEntity): void {
         this.onStartTouch(entitySystem, activator);
     }
+    public deactivateDebug(entitySystem: EntitySystem, activator: BaseEntity): void {
+        this.onEndTouch(entitySystem, activator);
+    }
 
     protected activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
         this.output_onTrigger.fire(entitySystem, this, activator);
@@ -2891,16 +2898,19 @@ export class trigger_multiple extends BaseEntity {
         this.output_onStartTouch.fire(entitySystem, this, activator);
         this.output_onStartTouchAll.fire(entitySystem, this, activator);
 
+
+        this.debugTriggered = true;
         // TODO(jstpierre): wait
         this.multiStartTouch(entitySystem, activator);
     }
-
+    
     protected onTouch(entitySystem: EntitySystem): void {
     }
-
+    
     protected onEndTouch(entitySystem: EntitySystem, activator: BaseEntity): void {
         this.output_onEndTouch.fire(entitySystem, this, activator);
         this.output_onEndTouchAll.fire(entitySystem, this, activator);
+        this.debugTriggered = false;
     }
 
     public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
@@ -2934,7 +2944,7 @@ export class trigger_multiple extends BaseEntity {
         }
 
         if (renderContext.showTriggerDebug) {
-            const color = this.enabled ? (isPlayerTouching ? Green : Magenta) : Cyan;
+            const color = this.enabled ? ((isPlayerTouching||this.debugTriggered) ? Green : Magenta) : Cyan;
             drawWorldSpaceAABB(getDebugOverlayCanvas2D(), renderContext.currentView.clipFromWorldMatrix, aabb, this.modelMatrix, color);
 
             getMatrixTranslation(scratchVec3a, this.modelMatrix);
@@ -2948,6 +2958,7 @@ export class trigger_once extends trigger_multiple {
 
     protected override activateTrigger(entitySystem: EntitySystem, activator: BaseEntity): void {
         super.activateTrigger(entitySystem, activator);
+        if (this.debugButton) this.debugButton.setEnabled(false);
         this.remove();
     }
 }
