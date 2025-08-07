@@ -1917,34 +1917,14 @@ export class SourceRenderer implements SceneGfx {
             this.renderContext.colorCorrection.setEnabled(v);
         };
 
-        const fullbrightLabel = document.createElement('div');
-        fullbrightLabel.textContent = 'Fullbright Mode:';
-        fullbrightLabel.style.fontWeight = 'bold';
-        renderHacksPanel.contents.appendChild(fullbrightLabel);
-        
-        const fullbrightSelect = document.createElement('select');
-        fullbrightSelect.style.width = '100%';
-        fullbrightSelect.style.marginBottom = '10px';
-        
-        const fullbrightOptions = [
-            { value: '0', text: 'Off' },
-            { value: '1', text: 'Fullbright (mat_fullbright 1)' },
-            { value: '2', text: 'Lighting Only (mat_fullbright 2)' }
-        ];
-        
-        for (const option of fullbrightOptions) {
-            const opt = document.createElement('option');
-            opt.value = option.value;
-            opt.textContent = option.text;
-            fullbrightSelect.appendChild(opt);
-        }
-        
-        fullbrightSelect.value = String(this.renderContext.fullbrightMode);
-        fullbrightSelect.onchange = () => {
-            this.renderContext.fullbrightMode = parseInt(fullbrightSelect.value);
+    
+        const fullbrightSelect = new UI.RadioButtons('Fullbright', ['0', '1', '2']);
+        fullbrightSelect.setSelectedIndex(0);
+        fullbrightSelect.onselectedchange = () => {
+            this.renderContext.fullbrightMode = fullbrightSelect.selectedIndex;
         };
+        renderHacksPanel.contents.appendChild(fullbrightSelect.elem);
         
-        renderHacksPanel.contents.appendChild(fullbrightSelect);
         
         const enableSkyBleed = new UI.Checkbox('Hall of Mirrors (Missing Skybox)', true);
         enableSkyBleed.onchanged = () => {
