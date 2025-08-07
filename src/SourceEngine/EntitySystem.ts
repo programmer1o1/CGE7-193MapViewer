@@ -210,8 +210,46 @@ export class BaseEntity {
         this.registerInput('setdefaultanimation', this.input_setdefaultanimation.bind(this));
         this.registerInput('setplaybackrate', this.input_setplaybackrate.bind(this));
 
+        this.registerInput('addoutput', this.input_addoutput.bind(this));
+        this.registerInput('setlocalorigin', this.input_setlocalorigin.bind(this));
+        this.registerInput('setlocalangles', this.input_setlocalangles.bind(this));
+        
         if (shouldHideEntityFallback(this.entity.classname))
             this.visible = false;
+    }
+    
+    private input_addoutput(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const values = value.split(' ');
+        const key = values[0];
+        const val = values.slice(1).join(' ').replace(':', ',');
+        this.keyValue(key, val);
+    }
+    
+    private input_setlocalorigin(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const origin = vmtParseVector(value);
+        vec3.set(this.localOrigin, origin[0], origin[1], origin[2]);
+    }
+
+    private input_setlocalangles(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const angles = vmtParseVector(value);
+        vec3.set(this.localAngles, angles[0], angles[1], angles[2]);
+    }
+    
+    // TODO: Make this smarter
+    private keyValue(key:string, value:string): void {
+        if (key == 'origin'){
+            const origin = vmtParseVector(value);
+            const vecOrigin = vec3.create();
+            vec3.set(vecOrigin, origin[0], origin[1], origin[2]);
+            this.setAbsOrigin(vecOrigin)
+        } else if (key == 'angles'){
+            const angles = vmtParseVector(value);
+            const vecAngles = vec3.create();
+            vec3.set(vecAngles, angles[0], angles[1], angles[2]);
+            this.setAbsAngles(vecAngles)
+        } else {
+            console.warn('unknown keyValue', key, value);
+        }
     }
 
     public shouldDraw(): boolean {
@@ -474,6 +512,21 @@ export class BaseEntity {
             computePosQAngleModelMatrix(this.localOrigin, this.localAngles, scratchMat4b);
         } else {
             vec3.copy(this.localOrigin, origin);
+            vec3.copy(this.localAngles, angles);
+        }
+
+        this.updateModelMatrix();
+    }
+
+    public setAbsAngles(angles: ReadonlyVec3): void {
+        if (this.parentEntity !== null) {
+            mat4.invert(scratchMat4a, this.getParentModelMatrix());
+            const origin = vec3.create()
+            this.getAbsOrigin(origin)
+            computeModelMatrixPosQAngle(scratchMat4b, origin, angles);
+            mat4.mul(scratchMat4b, scratchMat4a, scratchMat4b);
+            computePosQAngleModelMatrix(this.localOrigin, this.localAngles, scratchMat4b);
+        } else {
             vec3.copy(this.localAngles, angles);
         }
 
@@ -1522,7 +1575,6 @@ class prop_dynamic extends BaseProp {
         this.output_onAnimationDone.parse(entity.onanimationdone);
         
         this.registerInput('setbodygroup', this.input_setbodygroup.bind(this));
-        this.registerInput('addoutput', this.input_addoutput.bind(this));
     }
     
     public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
@@ -1567,28 +1619,6 @@ class prop_dynamic extends BaseProp {
     private input_setbodygroup(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
         // todo: bodygroup
         console.log(`prop_dynamic setbodygroup: ${value}`);
-    }
-
-    private input_addoutput(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
-        const values = value.split(' ');
-        const property = values[0];
-        if (property == 'origin'){
-            const x = parseFloat(values[1]);
-            const y = parseFloat(values[2]);
-            const z = parseFloat(values[3]);
-            const origin = vec3.fromValues(x,y,z);
-            this.setAbsOrigin(origin)
-        }
-        if (property == 'angles'){
-            const x = parseFloat(values[1]);
-            const y = parseFloat(values[2]);
-            const z = parseFloat(values[3]);
-            const angles = vec3.fromValues(x,y,z);
-            let origin = vec3.create();
-            this.getAbsOrigin(origin);
-            this.setAbsOriginAndAngles(origin, angles);
-        }
-        console.log(`prop_dynamic addoutput: ${values}`);
     }
 }
 
