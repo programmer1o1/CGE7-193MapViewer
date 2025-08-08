@@ -4552,6 +4552,14 @@ class ambient_generic extends BaseEntity {
     public static classname = 'ambient_generic';
 
     private isPlaying: boolean;
+    private message:string;
+    
+    private audioBuffer: AudioBuffer | null = null;
+    private audioContext: AudioContext;
+    private audtime: number = 0;
+    private audrate: number = 1;
+    private source: AudioBufferSourceNode;
+    private paused: boolean = true;
 
     constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
         super(entitySystem, renderContext, bspRenderer, entity);
@@ -4563,20 +4571,61 @@ class ambient_generic extends BaseEntity {
         this.registerInput('volume', this.input_volume.bind(this));
         this.registerInput('fadein', this.input_fadein.bind(this));
         this.registerInput('fadeout', this.input_fadeout.bind(this));
+        
+        this.message = entity.message
+        this.fetchAudio(renderContext, entity.message);
 
     }
 
+    private async fetchAudio(renderContext: SourceRenderContext, message:string){
+        const audioData = await renderContext.filesystem.fetchFileData(`sound/${message}`);
+        if (audioData === null) {
+            console.log(`failed to load ${message}`)
+            return;
+        }
+
+        this.audioContext = new AudioContext()
+        this.audioBuffer = await this.audioContext.decodeAudioData(audioData.copyToBuffer(), ()=>console.log(`loaded ${message}`));
+        
+    }
+    
     private input_pitch(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
         const pitch = parseInt(value);
+        console.warn(`ambient_generic input_pitch notimplemented`)
     }
-
+    
     private input_playsound(): void {
-        this.isPlaying = true;
-        console.log(this.entity.message)
-        // var audio = new Audio('audio_file.mp3');
-        // audio.play();
+        if (!this.isPlaying){
+            this.isPlaying = true;
+            console.log(`play ${this.message}`);
+
+        }
     }
 
+    public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
+        super.movement(entitySystem, renderContext);
+        if (this.audioBuffer !== null) {
+            if (this.isPlaying) {
+                this.audtime += renderContext.globalDeltaTime * this.audrate;
+
+                if (this.audtime < 0) this.audtime = 0;
+                
+                if (renderContext.globalDeltaTime == 0 && !this.paused){
+                    if (this.source) this.source.stop()
+                    this.paused = true;
+                }
+                if (renderContext.globalDeltaTime > 0 && this.paused){
+                    this.source = this.audioContext.createBufferSource();
+                    this.source.buffer = this.audioBuffer;
+                    this.source.connect(this.audioContext.destination);
+                    this.source.start(0, this.audtime)
+                    this.paused = false;
+                }
+                
+            }
+        }
+    }
+    
     private input_stopsound(): void {
         this.isPlaying = false;
     }
@@ -4586,13 +4635,13 @@ class ambient_generic extends BaseEntity {
     }
 
     private input_volume(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
-        console.warn(`point_spotlight setcolor notimplemented`)
+        console.warn(`ambient_generic input_volume notimplemented`)
     }
     private input_fadein(): void {
-        console.warn(`point_spotlight forceupdate notimplemented`)
+        console.warn(`ambient_generic input_fadein notimplemented`)
     }
     private input_fadeout(): void {
-        console.warn(`point_spotlight forceupdate notimplemented`)
+        console.warn(`ambient_generic input_fadeout notimplemented`)
     }
 }
 
