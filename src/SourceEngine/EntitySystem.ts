@@ -1353,6 +1353,96 @@ class func_door_rotating extends BaseDoor {
     }
 }
 
+class point_teleport extends BaseEntity {
+    public static classname = `point_teleport`;
+
+    private teleportHome: boolean = false;
+    private portalSpawnOrigin: vec3 = vec3.create();
+    private portalSpawnAngles: vec3 = vec3.create();
+
+    // cache per-target spawn info when TeleportHome is requested
+    private targetSpawnCache: Map<BaseEntity, { origin: vec3, angles: vec3 }> = new Map();
+
+    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
+        super(entitySystem, renderContext, bspRenderer, entity);
+
+        const spawnflags: number = Number(fallbackUndefined(this.entity.spawnflags, '0'));
+        this.teleportHome = !!(spawnflags & 0x01);
+
+        // inputs
+        this.registerInput('teleport', this.input_teleport.bind(this));
+        this.registerInput('teleportentity', this.input_teleport_entity.bind(this));
+        this.registerInput('teleporttocurrentpos', this.input_teleport_to_current_pos.bind(this));
+    }
+
+    public override spawn(entitySystem: EntitySystem): void {
+        super.spawn(entitySystem);
+
+        // capture portal's world-space spawn origin/angles
+        this.updateModelMatrix();
+        this.getAbsOriginAndAngles(this.portalSpawnOrigin, this.portalSpawnAngles);
+
+        // also keep a cache for per-target spawn pos if Teleport Home is used
+        this.targetSpawnCache.clear();
+    }
+
+    // helper: perform teleport on a given target to either portal spawn or portal current pos, or target's own spawn if Teleport Home
+    private performTeleport(entitySystem: EntitySystem, target: BaseEntity, toCurrentPos: boolean): void {
+        const destOrigin = vec3.create();
+        const destAngles = vec3.create();
+
+        if (toCurrentPos) {
+            // teleport to portal's current position/angles
+            this.getAbsOriginAndAngles(destOrigin, destAngles);
+        } else {
+            // teleport to portal's spawn unless Teleport Home is requested
+            if (this.teleportHome) {
+                const cached = this.targetSpawnCache.get(target);
+                if (cached !== undefined) {
+                    vec3.copy(destOrigin, cached.origin);
+                    vec3.copy(destAngles, cached.angles);
+                } else {
+                    // capture target's current spawn as a best-effort spawn point
+                    target.getAbsOrigin(destOrigin);
+                    target.getAbsOriginAndAngles(destOrigin, destAngles);
+                    this.targetSpawnCache.set(target, { origin: vec3.clone(destOrigin), angles: vec3.clone(destAngles) });
+                }
+            } else {
+                // default: portal's spawn position/angles
+                vec3.copy(destOrigin, this.portalSpawnOrigin);
+                vec3.copy(destAngles, this.portalSpawnAngles);
+            }
+        }
+
+        target.setAbsOriginAndAngles(destOrigin, destAngles);
+    }
+
+    // inputs
+    private input_teleport(entitySystem: EntitySystem): void {
+        const targetName = this.entity.target;
+        if (!targetName)
+            return;
+        const target = entitySystem.findEntityByTargetName(targetName);
+        if (target !== null)
+            this.performTeleport(entitySystem, target, false);
+    }
+
+    private input_teleport_entity(entitySystem: EntitySystem, activator: BaseEntity, value: string): void {
+        const target = entitySystem.findEntityByTargetName(value);
+        if (target !== null)
+            this.performTeleport(entitySystem, target, false);
+    }
+
+    private input_teleport_to_current_pos(entitySystem: EntitySystem): void {
+        const targetName = this.entity.target;
+        if (!targetName)
+            return;
+        const target = entitySystem.findEntityByTargetName(targetName);
+        if (target !== null)
+            this.performTeleport(entitySystem, target, true);
+    }
+}
+
 class func_breakable extends BaseEntity {
     public static classname = `func_breakable`;
 
@@ -5026,6 +5116,7 @@ export class EntityFactoryRegistry {
         this.registerFactory(point_camera);
         this.registerFactory(func_monitor);
         this.registerFactory(func_breakable);
+        this.registerFactory(point_teleport);
         this.registerFactory(prop_static);
         this.registerFactory(prop_physics);
         this.registerFactory(prop_dynamic);
