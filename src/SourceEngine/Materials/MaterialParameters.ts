@@ -985,6 +985,7 @@ class MaterialProxy_FizzlerVortex {
         param.value = 1.0;
     }
 }
+
 class MaterialProxy_YellowLevel {
     public static type = `yellowlevel`;
 
@@ -998,6 +999,7 @@ class MaterialProxy_YellowLevel {
         paramSetNum(map, this.resultvar, 1);
     }
 }
+
 class MaterialProxy_BurnLevel {
     public static type = `burnlevel`;
 

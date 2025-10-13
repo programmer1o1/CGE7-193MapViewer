@@ -2271,7 +2271,6 @@ export class StudioModelInstance {
 
         const lodIndex = this.getLODModelIndex(renderContext);
         for (let i = 0; i < this.bodyPartInstance.length; i++) {
-
             const bodyPartInstance = this.bodyPartInstance[i];
             if (!bodyPartInstance.visible)
                 continue;
