@@ -5185,7 +5185,8 @@ export class point_camera extends BaseEntity {
     }
 }
 
-class BaseMonitor extends BaseEntity {
+class func_monitor extends BaseEntity {
+    public static classname = `func_monitor`;
     public target: string;
 
     constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
@@ -5206,14 +5207,6 @@ class BaseMonitor extends BaseEntity {
 
         renderContext.currentPointCamera = camera;
     }
-}
-
-class func_monitor extends BaseMonitor {
-    public static classname = `func_monitor`;
-}
-
-class info_camera_link extends BaseMonitor {
-    public static classname = `info_camera_link`;
 }
 
 export class info_player_start extends BaseEntity {
@@ -5521,7 +5514,6 @@ export class EntityFactoryRegistry {
         this.registerFactory(prop_static);
         this.registerFactory(prop_physics);
         this.registerFactory(prop_dynamic);
-        this.registerFactory(info_camera_link);
         this.registerFactory(info_player_start);
         // this.registerFactory(info_particle_system);
         this.registerFactory(infodecal);
