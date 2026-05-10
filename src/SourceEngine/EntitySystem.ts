@@ -22,6 +22,10 @@ import { vmtParseColor, vmtParseNumber, vmtParseVector } from './VMT.js';
 import { EntityMaterialParameters, FogParams, BaseMaterial } from './Materials/MaterialBase.js';
 import { ParameterReference, paramSetNum } from './Materials/MaterialParameters.js';
 import { LightCache, worldLightingCalcColorForPoint } from './Materials/WorldLight.js';
+import { quat } from 'gl-matrix';
+import { qangleToQuat } from './Physics.js';
+import { Ragdoll } from './Ragdoll.js';
+import { calcWorldFromPose } from './Studio.js';
 import { makeStaticDataBuffer } from '../gfx/helpers/BufferHelpers.js';
 import { Button } from '../ui.js';
 
@@ -441,6 +445,10 @@ export class BaseEntity {
             if (modelData.bodyPartData.length !== 0) {
                 this.modelStudio = new StudioModelInstance(renderContext, modelData, this.materialParams!);
                 this.modelStudio.setSkin(renderContext, this.skin);
+                // Note: error.mdl is left at scale 1.0 here so the entity's
+                // own modelscale (parsed in BaseProp/etc.) is the only thing
+                // that drives the visible size — matches what the prop would
+                // have rendered at if its real model had loaded.
                 this.updateLightingData();
             }
         } catch (error) {
@@ -463,7 +471,7 @@ export class BaseEntity {
         this.spawnState = SpawnState.ReadyForSpawn;
     }
 
-    private updateStudioPose(): void {
+    protected updateStudioPose(): void {
         if (this.modelStudio === null)
             throw "whoops";
 
@@ -1530,7 +1538,7 @@ abstract class BaseProp extends BaseEntity {
     protected updateModelScale(): void {
         if (this.modelStudio !== null) {
             const finalScale = this.scale * this.uniformScale;
-            
+
             vec3.set(this.modelStudio.modelScale, finalScale, finalScale, finalScale);
             
             // camera.mdl
@@ -1655,23 +1663,54 @@ class prop_static extends BaseProp {
 
 class prop_dynamic extends BaseProp {
     public static classname = 'prop_dynamic';
-    
+
     private output_onAnimationBegin = new EntityOutput();
     private output_onAnimationDone = new EntityOutput();
-    
+    private collisionBody: any = null;
+    private retainedPhysicsShapes: any[] = [];
+
     constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
         super(entitySystem, renderContext, bspRenderer, entity);
-        
+
         this.output_onAnimationBegin.parse(entity.onanimationbegin);
         this.output_onAnimationDone.parse(entity.onanimationdone);
-        
+
         this.registerInput('setbodygroup', this.input_setbodygroup.bind(this));
     }
-    
+
+    private trySpawnCollision(renderContext: SourceRenderContext): void {
+        if (this.collisionBody !== null || this.modelStudio === null || renderContext.physics === null)
+            return;
+
+        const physics = renderContext.physics;
+        const modelData = this.modelStudio.modelData;
+        const rot = qangleToQuat(quat.create(), this.localAngles);
+
+        const phy = modelData.phy;
+        if (phy !== null && phy.geometries.length > 0 && phy.geometries[0].pieces.length > 0) {
+            const shape = physics.buildShapeFromPhyPieces(phy.geometries[0].pieces, this.retainedPhysicsShapes);
+            if (shape !== null) {
+                this.collisionBody = physics.addStaticShape(shape, this.localOrigin, rot);
+                return;
+            }
+        }
+
+        const bbox = modelData.viewBB;
+        const halfExtents: [number, number, number] = [
+            Math.max(0.5, (bbox.max[0] - bbox.min[0]) * 0.5),
+            Math.max(0.5, (bbox.max[1] - bbox.min[1]) * 0.5),
+            Math.max(0.5, (bbox.max[2] - bbox.min[2]) * 0.5),
+        ];
+        this.collisionBody = physics.addStaticBox(halfExtents, this.localOrigin, rot);
+    }
+
     public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
         super.movement(entitySystem, renderContext);
-        
-        // todo fix rotation and animation thing 
+
+        if (this.collisionBody === null)
+            this.trySpawnCollision(renderContext);
+
+        // todo fix rotation and animation thing
         // force static pose
         if (this.modelStudio !== null) {
             this.modelStudio.setupPoseFromSequence(0, 0);
@@ -1715,34 +1754,317 @@ class prop_dynamic extends BaseProp {
 
 class prop_physics extends BaseProp {
     public static classname = 'prop_physics';
-    
+
     private output_onBreak = new EntityOutput();
     private output_onDamaged = new EntityOutput();
-    
+
+    private body: any = null;
+    private motionEnabled: boolean = true;
+    private retainedPhysicsShapes: any[] = [];
+
     constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
         super(entitySystem, renderContext, bspRenderer, entity);
-        
+
         this.output_onBreak.parse(entity.onbreak);
         this.output_onDamaged.parse(entity.ondamaged);
-        
+
         this.registerInput('break', this.input_break.bind(this));
         this.registerInput('enablemotion', this.input_enablemotion.bind(this));
         this.registerInput('disablemotion', this.input_disablemotion.bind(this));
     }
-    
+
+    private trySpawnBody(renderContext: SourceRenderContext): void {
+        if (this.body !== null || this.modelStudio === null || renderContext.physics === null)
+            return;
+
+        const physics = renderContext.physics;
+        const modelData = this.modelStudio.modelData;
+        const rot = qangleToQuat(quat.create(), this.localAngles);
+
+        // Total mass and convex shape from PHY when present.
+        const phy = modelData.phy;
+        if (phy !== null && phy.geometries.length > 0 && phy.geometries[0].pieces.length > 0) {
+            const shape = physics.buildShapeFromPhyPieces(phy.geometries[0].pieces, this.retainedPhysicsShapes);
+            if (shape !== null) {
+                let mass = 0;
+                for (const s of phy.solids) mass += s.mass;
+                if (mass <= 0) mass = 30;
+                this.body = physics.addDynamicShape(shape, this.localOrigin, rot, mass);
+                return;
+            }
+        }
+
+        // Fallback: AABB box with default mass.
+        const bbox = modelData.viewBB;
+        const halfExtents = vec3.fromValues(
+            Math.max(0.5, (bbox.max[0] - bbox.min[0]) * 0.5),
+            Math.max(0.5, (bbox.max[1] - bbox.min[1]) * 0.5),
+            Math.max(0.5, (bbox.max[2] - bbox.min[2]) * 0.5),
+        );
+        this.body = physics.addDynamicBox(halfExtents, this.localOrigin, rot, 30);
+    }
+
+    public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
+        if (this.body === null)
+            this.trySpawnBody(renderContext);
+
+        if (this.body !== null && this.motionEnabled && renderContext.physics !== null) {
+            // Replace the matrix that BaseEntity would compute from localOrigin/localAngles.
+            renderContext.physics.readBodyTransform(this.body, this.modelMatrix);
+            getMatrixTranslation(this.materialParams!.position, this.modelMatrix);
+
+            // Studio animation update without re-deriving the matrix from local pose.
+            if (this.modelStudio !== null) {
+                // Skipping super.movement() means updateModelScale() doesn't
+                // run; apply the entity's modelscale here so error.mdl (and
+                // any explicitly-set model) respects the keyfield.
+                this.updateModelScale();
+                this.modelStudio.visible = this.shouldDraw() && this.renderamt !== 0 && this.rendermode !== 10;
+                this.modelStudio.movement(renderContext);
+            }
+            return;
+        }
+
+        super.movement(entitySystem, renderContext);
+    }
+
+    private syncBodyToLocal(): void {
+        if (this.body === null)
+            return;
+        const physics = (this as any).bspRenderer?.entitySystem?.renderContext?.physics;
+        if (!physics)
+            return;
+
+        const a = this.localAngles;
+        const halfPitch = a[0] * Math.PI / 360;
+        const halfYaw   = a[1] * Math.PI / 360;
+        const halfRoll  = a[2] * Math.PI / 360;
+        const sp = Math.sin(halfPitch), cp = Math.cos(halfPitch);
+        const sy = Math.sin(halfYaw),   cy = Math.cos(halfYaw);
+        const sr = Math.sin(halfRoll),  cr = Math.cos(halfRoll);
+        const rot = quat.fromValues(
+            cy * cp * sr - sy * sp * cr,
+            sy * cp * sr + cy * sp * cr,
+            sy * cp * cr - cy * sp * sr,
+            cy * cp * cr + sy * sp * sr,
+        );
+        physics.teleportBody(this.body, this.localOrigin, rot);
+    }
+
+    public override setAbsOrigin(origin: ReadonlyVec3): void {
+        super.setAbsOrigin(origin);
+        this.syncBodyToLocal();
+    }
+
+    public override setAbsAngles(angles: ReadonlyVec3): void {
+        super.setAbsAngles(angles);
+        this.syncBodyToLocal();
+    }
+
+    public override setAbsOriginAndAngles(origin: ReadonlyVec3, angles: ReadonlyVec3): void {
+        super.setAbsOriginAndAngles(origin, angles);
+        this.syncBodyToLocal();
+    }
+
     private input_break(entitySystem: EntitySystem, activator: BaseEntity): void {
         this.output_onBreak.fire(entitySystem, this, activator);
+        if (this.body !== null) {
+            entitySystem.renderContext.physics?.removeBody(this.body);
+            this.body = null;
+        }
         this.remove();
     }
-    
-    private input_enablemotion(entitySystem: EntitySystem): void {
-        // todo: add actual physics
-        // tho this will be hard lol
+
+    private input_enablemotion(): void {
+        this.motionEnabled = true;
     }
-    
-    private input_disablemotion(entitySystem: EntitySystem): void {
-        // todo: add actual physics
-        // again, might be hard
+
+    private input_disablemotion(): void {
+        this.motionEnabled = false;
+    }
+}
+
+class prop_physics_override extends prop_physics {
+    public static override classname = 'prop_physics_override';
+}
+
+const scratchMatPhysbox = mat4.create();
+const scratchMatPhysbox2 = mat4.create();
+
+class func_physbox extends BaseEntity {
+    public static classname = 'func_physbox';
+    // Marks this brush model as physics-driven so BSPRenderer skips creating a
+    // static mesh for it (otherwise dynamic props would still see the brush at
+    // its bind position even after we move it).
+    public static readonly isDynamicBrush = true;
+
+    private body: any = null;
+    private retainedShapes: any[] = [];
+    private centroidSpawn = vec3.create();
+    // Entity's modelMatrix at body-spawn time. Brush vertices are in entity-local
+    // space, so the per-frame render matrix has to fold this in to get back to world.
+    private entitySpawnMatrix = mat4.create();
+    private mass: number = 75;
+
+    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
+        super(entitySystem, renderContext, bspRenderer, entity);
+        // Source's func_physbox uses `mass` keyfield directly (in kg-like units).
+        const m = Number(fallbackUndefined(entity.mass, '0'));
+        if (Number.isFinite(m) && m > 0)
+            this.mass = m;
+
+        this.registerInput('break', this.input_break.bind(this));
+        this.registerInput('enablemotion', this.input_enablemotion.bind(this));
+        this.registerInput('disablemotion', this.input_disablemotion.bind(this));
+    }
+
+    private input_break(entitySystem: EntitySystem): void {
+        if (this.body !== null) {
+            entitySystem.renderContext.physics?.removeBody(this.body);
+            this.body = null;
+        }
+        this.remove();
+    }
+
+    private input_enablemotion(): void {
+        // No-op for now; freeze/unfreeze on demand isn't wired.
+    }
+
+    private input_disablemotion(): void {
+        // No-op for now.
+    }
+
+    private trySpawnBody(renderContext: SourceRenderContext): void {
+        if (this.body !== null || this.modelBSP === null || renderContext.physics === null)
+            return;
+
+        // Make sure the entity's modelMatrix reflects its origin/angles before
+        // we read vertices. Brush vertices are in model-local space; the
+        // entity matrix is what places them in the world.
+        this.updateModelMatrix();
+
+        const bsp = this.bspRenderer.bsp;
+        const model = this.modelBSP.model;
+        const stride = (3 + 4 + 4 + 4);
+        const allVerts = new Float32Array(bsp.vertexData);
+        const idx = new Uint32Array(bsp.indexData);
+        const used = new Set<number>();
+        for (const surfIdx of model.surfaces) {
+            const surf = bsp.surfaces[surfIdx];
+            for (let i = 0; i < surf.indexCount; i++)
+                used.add(idx[surf.startIndex + i]);
+        }
+        if (used.size < 4) {
+            console.warn(`[func_physbox] ${this.entity.targetname || this.entity.model} skipped: only ${used.size} unique vertices`);
+            return;
+        }
+
+        const verts = new Float32Array(used.size * 3);
+        const tmp = vec3.create();
+        let w = 0;
+        for (const v of used) {
+            tmp[0] = allVerts[v * stride + 0];
+            tmp[1] = allVerts[v * stride + 1];
+            tmp[2] = allVerts[v * stride + 2];
+            // Local -> world via entity modelMatrix so the body spawns where the brush actually sits.
+            vec3.transformMat4(tmp, tmp, this.modelMatrix);
+            verts[w++] = tmp[0];
+            verts[w++] = tmp[1];
+            verts[w++] = tmp[2];
+        }
+
+        this.body = renderContext.physics.addDynamicConvexFromWorldVertices(verts, this.mass, this.retainedShapes, this.centroidSpawn);
+        // Snapshot the entity's bind-pose transform so the per-frame render
+        // matrix can take a brush local-space vertex L and produce
+        //   bodyPos + R_body * (entitySpawn * L - centroidWorld)
+        mat4.copy(this.entitySpawnMatrix, this.modelMatrix);
+    }
+
+    public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
+        if (this.body === null)
+            this.trySpawnBody(renderContext);
+
+        if (this.body !== null && renderContext.physics !== null && this.modelBSP !== null) {
+            // Brush vertex L (in entity-local space) -> world via the entity's
+            // bind-pose matrix (entitySpawn * L); we want it to follow the
+            // body, rotating around the world-space centroid:
+            //   final = bodyPos + R_body * (entitySpawn*L - centroidWorld)
+            // i.e. M = T(bodyPos) * R_body * T(-centroidWorld) * entitySpawn
+            renderContext.physics.readBodyTransform(this.body, scratchMatPhysbox);
+            mat4.identity(scratchMatPhysbox2);
+            mat4.translate(scratchMatPhysbox2, scratchMatPhysbox2, [-this.centroidSpawn[0], -this.centroidSpawn[1], -this.centroidSpawn[2]]);
+            mat4.mul(scratchMatPhysbox2, scratchMatPhysbox2, this.entitySpawnMatrix);
+            mat4.mul(this.modelMatrix, scratchMatPhysbox, scratchMatPhysbox2);
+
+            // Non-worldspawn brushes default to visible=false; BaseEntity.movement
+            // is what flips them on. We bypass that path so we have to do it here.
+            this.modelBSP.visible = this.shouldDraw() && this.renderamt !== 0 && this.rendermode !== 10;
+            return;
+        }
+
+        super.movement(entitySystem, renderContext);
+    }
+}
+
+class prop_ragdoll extends BaseProp {
+    public static classname = 'prop_ragdoll';
+
+    private ragdoll: Ragdoll | null = null;
+    private ragdollBoundsMin = vec3.create();
+    private ragdollBoundsMax = vec3.create();
+
+    private trySpawnRagdoll(renderContext: SourceRenderContext): void {
+        if (this.ragdoll !== null || this.modelStudio === null || renderContext.physics === null)
+            return;
+        // Build the model's spawn-pose modelMatrix and use it as the bind-pose
+        // anchor for the ragdoll.
+        this.updateModelMatrix();
+        this.ragdoll = new Ragdoll(renderContext.physics, this.modelStudio.modelData, this.modelMatrix);
+    }
+
+    public override movement(entitySystem: EntitySystem, renderContext: SourceRenderContext): void {
+        if (this.ragdoll === null)
+            this.trySpawnRagdoll(renderContext);
+
+        if (this.ragdoll !== null && this.modelStudio !== null) {
+            // Same fix as prop_physics: bypassing super.movement() means
+            // updateModelScale() never runs, so apply it manually.
+            this.updateModelScale();
+            // Tick manual sleep + drive the studio model's bones from ragdoll
+            // body transforms. updateStudioPose is a no-op for ragdolls so
+            // these aren't trampled by the bind-pose sequence sampler each frame.
+            this.ragdoll.update(renderContext.globalDeltaTime);
+            this.ragdoll.syncToBoneMatrices(this.modelStudio.worldFromBoneMatrix);
+            calcWorldFromPose(this.modelStudio.worldFromPoseMatrix, this.modelStudio.worldFromBoneMatrix, this.modelStudio.modelData);
+
+            // Keep the model's bbox tracking the actual ragdoll spread so it
+            // doesn't get frustum-culled once limbs splay past the bind viewBB.
+            // viewBB is in model-local space; setting modelMatrix to identity
+            // means it's already world-space.
+            this.ragdoll.computeWorldBounds(this.ragdollBoundsMin, this.ragdollBoundsMax);
+            mat4.identity(this.modelStudio.modelMatrix);
+            const a = this.ragdollBoundsMin, b = this.ragdollBoundsMax;
+            this.modelStudio.modelData.viewBB.set(a[0], a[1], a[2], b[0], b[1], b[2]);
+
+            this.modelStudio.visible = this.shouldDraw() && this.renderamt !== 0 && this.rendermode !== 10;
+            this.modelStudio.movement(renderContext);
+            return;
+        }
+
+        super.movement(entitySystem, renderContext);
+    }
+
+    // Once the ragdoll is live, the studio bones are owned by physics. Skip the
+    // base-class call to setupPoseFromSequence which would reset to bind pose.
+    protected override updateStudioPose(): void {
+        if (this.ragdoll === null) {
+            super.updateStudioPose();
+            return;
+        }
+        // Bones are already in the right state from movement(); just keep
+        // worldFromPose in sync in case anything ran between movement and render.
+        if (this.modelStudio !== null)
+            calcWorldFromPose(this.modelStudio.worldFromPoseMatrix, this.modelStudio.worldFromBoneMatrix, this.modelStudio.modelData);
     }
 }
 
@@ -2323,30 +2645,6 @@ class func_tracktrain extends BaseEntity {
 }
 
 // this was unnecessary but i decided to keep it here anyways
-class func_physbox extends BaseEntity {
-    public static classname = `func_physbox`;
-
-    constructor(entitySystem: EntitySystem, renderContext: SourceRenderContext, bspRenderer: BSPRenderer, entity: BSPEntity) {
-        super(entitySystem, renderContext, bspRenderer, entity);
-        
-        this.registerInput('break', this.input_break.bind(this));
-        this.registerInput('disablemotion', this.input_disablemotion.bind(this));
-        this.registerInput('enablemotion', this.input_enablemotion.bind(this));
-    }
-
-    private input_break(entitySystem: EntitySystem): void {
-        this.remove();
-    }
-
-    private input_disablemotion(entitySystem: EntitySystem): void {
-        // todo: physics here
-    }
-
-    private input_enablemotion(entitySystem: EntitySystem): void {
-        // todo: physics here
-    }
-}
-
 class func_areaportalwindow extends BaseEntity {
     public static classname = `func_areaportalwindow`;
 
@@ -5513,7 +5811,10 @@ export class EntityFactoryRegistry {
         this.registerFactory(point_teleport);
         this.registerFactory(prop_static);
         this.registerFactory(prop_physics);
+        this.registerFactory(prop_physics_override);
+        this.registerFactory(prop_ragdoll);
         this.registerFactory(prop_dynamic);
+        this.registerFactory(func_physbox);
         this.registerFactory(info_player_start);
         // this.registerFactory(info_particle_system);
         this.registerFactory(infodecal);

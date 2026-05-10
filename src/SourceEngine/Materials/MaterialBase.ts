@@ -518,7 +518,7 @@ export abstract class BaseMaterial {
         if (vtf === null)
             return false;
 
-        return vtf.lateBinding !== undefined;
+        return vtf.lateBinding !== null;
     }
 
     protected paramFillVector4(d: Float32Array, offs: number, name: string): number {

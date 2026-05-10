@@ -18,6 +18,8 @@ import { unpackColorRGBExp32 } from "./Materials/Lightmap.js";
 import { BaseMaterial, EntityMaterialParameters, MaterialShaderTemplateBase } from "./Materials/MaterialBase.js";
 import { LightCache } from "./Materials/WorldLight.js";
 import { computeModelMatrixPosQAngle, HardwareVertData, StudioModelInstance } from "./Studio.js";
+import { qangleToQuat } from "./Physics.js";
+import { quat } from "gl-matrix";
 
 //#region Detail Models
 const enum DetailPropOrientation { NORMAL, SCREEN_ALIGNED, SCREEN_ALIGNED_VERTICAL, }
@@ -536,6 +538,9 @@ export class StaticPropRenderer {
     private bbox = new AABB();
     private materialParams = new EntityMaterialParameters();
     private lightingOrigin = vec3.create();
+    // Hold-alive references to compound subshape pieces — Jolt would otherwise
+    // free them when our local refs go out of scope.
+    private retainedPhysicsShapes: any[] = [];
 
     constructor(renderContext: SourceRenderContext, private bspRenderer: BSPRenderer, private staticProp: StaticProp) {
         this.createInstance(renderContext, bspRenderer);
@@ -567,6 +572,28 @@ export class StaticPropRenderer {
             this.colorMeshData = colorMeshData;
             this.studioModelInstance.setColorMeshData(renderContext.renderCache, this.colorMeshData);
         }
+
+        // Add static collision so dynamic props rest on this prop instead of
+        // falling through it. Prefer the model's PHY convex hull(s); fall back
+        // to an AABB box when a model ships without .phy data.
+        renderContext.physicsReady.then((physics) => {
+            const rot = qangleToQuat(quat.create(), this.staticProp.rot);
+            const phy = modelData.phy;
+            if (phy !== null && phy.geometries.length > 0 && phy.geometries[0].pieces.length > 0) {
+                const shape = physics.buildShapeFromPhyPieces(phy.geometries[0].pieces, this.retainedPhysicsShapes);
+                if (shape !== null) {
+                    physics.addStaticShape(shape, this.staticProp.pos, rot);
+                    return;
+                }
+            }
+            const bbox = modelData.viewBB;
+            const halfExtents: [number, number, number] = [
+                Math.max(0.5, (bbox.max[0] - bbox.min[0]) * 0.5 * this.staticProp.scale),
+                Math.max(0.5, (bbox.max[1] - bbox.min[1]) * 0.5 * this.staticProp.scale),
+                Math.max(0.5, (bbox.max[2] - bbox.min[2]) * 0.5 * this.staticProp.scale),
+            ];
+            physics.addStaticBox(halfExtents, this.staticProp.pos, rot);
+        });
     }
 
     public async reloadInstance(renderContext: SourceRenderContext, bspRenderer: BSPRenderer): Promise<void> {

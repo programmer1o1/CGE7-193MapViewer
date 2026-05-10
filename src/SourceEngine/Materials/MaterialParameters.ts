@@ -19,7 +19,11 @@ interface Parameter {
 export class ParameterTexture {
     public texture: VTF | null = null;
 
-    constructor(public isSRGB: boolean = false, public isEnvmap: boolean = false, public ref: string | null = null) {
+    // `isOptional` marks textures that aren't strictly required for the
+    // material to render something usable — bumpmap, envmap, detail layers,
+    // etc. When MaterialCache.skipOptionalTextures is true these are dropped
+    // to cut the per-map texture-fetch count down to ~1 per material.
+    constructor(public isSRGB: boolean = false, public isEnvmap: boolean = false, public ref: string | null = null, public isOptional: boolean = false) {
     }
 
     public parse(S: string): void {
@@ -37,6 +41,8 @@ export class ParameterTexture {
 
     public async fetch(materialCache: MaterialCache, entityParams: EntityMaterialParameters | null): Promise<void> {
         if (this.ref !== null) {
+            if (this.isOptional && materialCache.skipOptionalTextures)
+                return;
             // Special case env_cubemap if we have a local override.
             let filename = this.ref;
 

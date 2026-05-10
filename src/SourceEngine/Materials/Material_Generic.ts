@@ -832,6 +832,13 @@ void mainPS() {
 #endif
 #endif
 
+    // Fullbright mode 1 — replace whatever lighting path we took (lightmap,
+    // static vertex, ambient cube, or dynamic pixel) with full white so unlit
+    // studio models (props, ragdolls) get fullbright too. Done AFTER all
+    // diffuse contributions so nothing adds on top.
+    if (u_FullbrightMode == 1.0)
+        t_DiffuseLighting.rgb = vec3(1.0);
+
     vec3 t_PositionToEye = u_CameraPosWorld.xyz - v_PositionWorld.xyz;
     vec3 t_WorldDirectionToEye = normalize(t_PositionToEye);
 
@@ -1141,9 +1148,9 @@ export class Material_Generic extends BaseMaterial {
         const p = this.param;
 
         // Generic
-        p['$envmap']                       = new P.ParameterTexture(true, true);
+        p['$envmap']                       = new P.ParameterTexture(true, true, null, true);
         p['$envmapframe']                  = new P.ParameterNumber(0);
-        p['$envmapmask']                   = new P.ParameterTexture();
+        p['$envmapmask']                   = new P.ParameterTexture(false, false, null, true);
         p['$envmapmaskframe']              = new P.ParameterNumber(0);
         p['$envmapmasktransform']          = new P.ParameterMatrix();
         p['$envmaptint']                   = new P.ParameterColor(1, 1, 1);
@@ -1151,7 +1158,7 @@ export class Material_Generic extends BaseMaterial {
         p['$envmapsaturation']             = new P.ParameterNumber(1);
         p['$envmaplightscale']             = new P.ParameterNumber(0);
         p['$fresnelreflection']            = new P.ParameterNumber(1);
-        p['$detail']                       = new P.ParameterTexture();
+        p['$detail']                       = new P.ParameterTexture(false, false, null, true);
         p['$detailframe']                  = new P.ParameterNumber(0);
         p['$detailblendmode']              = new P.ParameterNumber(0, false);
         p['$detailblendfactor']            = new P.ParameterNumber(1);
@@ -1159,13 +1166,13 @@ export class Material_Generic extends BaseMaterial {
         p['$detailscale']                  = new P.ParameterNumber(4);
         p['$detailtexturetransform']       = new P.ParameterMatrix();
         p['$detail_alpha_mask_base_texture'] = new P.ParameterBoolean(false, false);
-        p['$bumpmap']                      = new P.ParameterTexture();             // Generic
+        p['$bumpmap']                      = new P.ParameterTexture(false, false, null, true);             // Generic
         p['$bumpframe']                    = new P.ParameterNumber(0);
         p['$bumptransform']                = new P.ParameterMatrix();
-        p['$bumpmap2']                     = new P.ParameterTexture();             // LightmappedGeneric, WorldVertexTransition
+        p['$bumpmap2']                     = new P.ParameterTexture(false, false, null, true);             // LightmappedGeneric, WorldVertexTransition
         p['$bumpframe2']                   = new P.ParameterNumber(0);
         p['$bumptransform2']               = new P.ParameterMatrix();
-        p['$bumpmask']                     = new P.ParameterTexture();
+        p['$bumpmask']                     = new P.ParameterTexture(false, false, null, true);
         p['$alphatestreference']           = new P.ParameterNumber(0.7);
         p['$nodiffusebumplighting']        = new P.ParameterBoolean(false, false);
         p['$ssbump']                       = new P.ParameterBoolean(false, false);
