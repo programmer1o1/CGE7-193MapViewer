@@ -7,17 +7,10 @@ export interface NamedArrayBufferSlice extends ArrayBufferSlice {
     name: string;
 }
 
-function getDataStorageBaseURL(isDevelopment: boolean): string {
-    // always use tf2 materials from noclip
-    // return 'https://z.noclip.website';
-
-    // always use luna's file server
-    return 'https://cdn2.gaq9.com';
-    
-    // original implementation commented out for reference
-    // if (isDevelopment)
-    //     return `/data`;
-    // return import.meta.env.PUBLIC_STORAGE_URL;
+function getDataStorageBaseURL(isAssets: boolean): string {
+    if (isAssets)
+        return 'https://cdn2.gaq9.com';
+    return 'https://cdn.gaq9.com';
 }
 
 function getDataURLForPath(url: string, isDevelopment: boolean): string {
@@ -25,7 +18,8 @@ function getDataURLForPath(url: string, isDevelopment: boolean): string {
         return url;
 
     assert(!url.startsWith(`data/`));
-    return `${getDataStorageBaseURL(isDevelopment)}/${url}`;
+    const isAssets = url.endsWith('.vpk');
+    return `${getDataStorageBaseURL(isAssets)}/${url}`;
 }
 
 export type AbortedCallback = () => void;
