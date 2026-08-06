@@ -213,14 +213,14 @@ export class Material_Refract extends BaseMaterial {
 
         const p = this.param;
 
-        p['$normalmap']                    = new P.ParameterTexture();
+        p['$normalmap']                    = new P.ParameterTexture(false, false, null, true);
         p['$bumpframe']                    = new P.ParameterNumber(0);
         p['$bumptransform']                = new P.ParameterMatrix();
-        p['$envmap']                       = new P.ParameterTexture(true, true);
+        p['$envmap']                       = new P.ParameterTexture(true, true, null, true);
         p['$envmapframe']                  = new P.ParameterNumber(0);
         p['$refracttint']                  = new P.ParameterColor(1, 1, 1);
         p['$refractamount']                = new P.ParameterNumber(2);
-        p['$refracttinttexture']           = new P.ParameterTexture(true, false);
+        p['$refracttinttexture']           = new P.ParameterTexture(true, false, null, true);
         p['$refracttinttextureframe']      = new P.ParameterNumber(0);
         p['$envmaptint']                   = new P.ParameterColor(1, 1, 1);
         p['$envmapcontrast']               = new P.ParameterNumber(0);

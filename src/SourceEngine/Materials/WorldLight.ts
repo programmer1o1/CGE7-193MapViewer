@@ -8,7 +8,7 @@ import { GfxrResolveTextureID } from "../../gfx/render/GfxRenderGraph.js";
 import { nArray, assert, assertExists } from "../../util.js";
 import { BSPFile, Cubemap, WorldLight, WorldLightType, AmbientCube, BSPLeaf, WorldLightFlags } from "../BSPFile.js";
 import { BSPRenderer, SourceEngineView, SourceEngineViewType } from "../Main.js";
-import { VTF } from "../VTF.js";
+import type { VTF } from "../VTF.js";
 
 //#region Runtime Lighting / LightCache
 function findEnvCubemapTexture(bspfile: BSPFile, pos: ReadonlyVec3): Cubemap | null {
@@ -287,6 +287,25 @@ export class LightCache {
         return computeAmbientCubeFromLeaf(this.ambientCube, leaf, this.pos);
     }
 
+    private cacheNearestAmbientSample(bspfile: BSPFile): boolean {
+        // Walk every leaf with samples and find the single closest sample point.
+        let bestDist = Infinity;
+        let bestLeaf: BSPLeaf | null = null;
+        for (let i = 0; i < bspfile.leaflist.length; i++) {
+            const leaf = bspfile.leaflist[i];
+            for (let j = 0; j < leaf.ambientLightSamples.length; j++) {
+                const d = vec3.squaredDistance(leaf.ambientLightSamples[j].pos, this.pos);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestLeaf = leaf;
+                }
+            }
+        }
+        if (bestLeaf === null)
+            return false;
+        return computeAmbientCubeFromLeaf(this.ambientCube, bestLeaf, this.pos);
+    }
+
     private addWorldLightToAmbientCube(light: WorldLight): void {
         vec3.sub(scratchVec3, light.pos, this.pos);
         const ratio = worldLightDistanceFalloff(light, scratchVec3);
@@ -354,7 +373,13 @@ export class LightCache {
         this.envCubemap = findEnvCubemapTexture(bspfile, this.pos);
 
         // Reset ambient cube to leaf lighting.
-        const hasAmbientLeafLighting = this.cacheAmbientLight(leaf);
+        let hasAmbientLeafLighting = this.cacheAmbientLight(leaf);
+
+        // Fallback: the prop's leaf may have no ambient samples (common when
+        // illumPosition lands in solid or in an unsampled crevice). Walk the
+        // BSP for the nearest sample to keep the prop from rendering black.
+        if (!hasAmbientLeafLighting)
+            hasAmbientLeafLighting = this.cacheNearestAmbientSample(bspfile);
 
         // Now go through and cache world lights.
         this.cacheWorldLights(bspfile.worldlights, hasAmbientLeafLighting);

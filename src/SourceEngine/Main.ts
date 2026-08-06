@@ -24,6 +24,8 @@ import { BSPFile, BSPFileVariant, Model, BSPSurface } from "./BSPFile.js";
 import { BaseEntity, calcFrustumViewProjection, EntityFactoryRegistry, EntitySystem, env_projectedtexture, env_shake, point_camera, sky_camera, trigger_multiple, trigger_once, trigger_look, worldspawn, game_text, ServerCommandLogger } from './EntitySystem.js';import { DetailPropLeafRenderer, StaticPropRenderer } from "./StaticDetailObject.js";
 import { StudioModelCache } from "./Studio.js";
 import { createVPKMount, VPKMount } from "./VPK.js";
+import { initPhysicsModule, PhysicsSystem } from "./Physics.js";
+import { GlobalSaveManager } from "../SaveManager.js";
 import { GfxShaderLibrary } from "../gfx/helpers/GfxShaderLibrary.js";
 import * as UI from "../ui.js";
 import { projectionMatrixConvertClipSpaceNearZ } from "../gfx/helpers/ProjectionHelpers.js";
@@ -501,6 +503,9 @@ export class BSPModelRenderer {
     public entity: BaseEntity | null = null;
     public surfaces: BSPSurfaceRenderer[] = [];
     public surfacesByIdx: BSPSurfaceRenderer[] = [];
+    // Kinematic Jolt bodies, one per surface, that follow `modelMatrix`. Worldspawn (model 0) leaves these empty since it never moves.
+    public physicsBodies: any[] = [];
+    private lastPhysicsMatrix = mat4.create();
 
     constructor(renderContext: SourceRenderContext, public model: Model, private bspRenderer: BSPRenderer, startLightmapPageIndex: number) {
         for (let i = 0; i < model.surfaces.length; i++) {
@@ -745,19 +750,74 @@ export class BSPRenderer {
             this.lightmapUpdaters[i] = lightmapData ? new FaceLightmapUpdater(lightmapData) : null;
         }
 
-        // Spawn entities.
+        // Spawn entities first so brush-entity model matrices are populated before
+        // we snapshot them for collision.
         this.entitySystem.createAndSpawnEntities(this.bsp.entities);
+
+        // Build static world collision once Jolt is ready. Each Model gets its own
+        // static body, transformed by its modelMatrix. Worldspawn (model 0) uses
+        // identity; brush entities (func_door, func_wall, ...) live in submodel
+        // space and only reach their world position via the entity's matrix.
+        // Kinematic mesh bodies are unreliable in Jolt (MeshShape is intended for
+        // static use), so animated brushes (moving platforms) keep stale collision
+        // at their spawn position. Doors closed-at-spawn collide correctly.
+        renderContext.physicsReady.then((physics) => {
+            const verts = new Float32Array(this.bsp.vertexData);
+            const stride = 3 + 4 + 4 + 4;
+            const idx = new Uint32Array(this.bsp.indexData);
+
+            for (let i = 0; i < this.bsp.models.length; i++) {
+                const model = this.bsp.models[i];
+                const renderer = this.models[i];
+                if (renderer.entity !== null)
+                    renderer.entity.updateModelMatrix();
+
+                // Brushes owned by a dynamic entity (func_physbox) get their
+                // collision built by the entity itself as a dynamic convex
+                // hull, so don't also bake them as a static mesh.
+                const ownerEntity = renderer.entity;
+                const ownerCtor = ownerEntity ? (ownerEntity.constructor as any) : null;
+                if (ownerCtor !== null && ownerCtor.isDynamicBrush === true)
+                    continue;
+
+                const transform = renderer.modelMatrix;
+                for (let j = 0; j < model.surfaces.length; j++) {
+                    const surface = this.bsp.surfaces[model.surfaces[j]];
+                    if (surface.indexCount === 0)
+                        continue;
+                    physics.addStaticMeshSlice(verts, stride, idx, surface.startIndex, surface.indexCount, transform as any);
+                }
+            }
+        });
 
         // Spawn static objects.
         if (this.bsp.staticObjects !== null)
             for (const staticProp of this.bsp.staticObjects.staticProps)
                 this.staticPropRenderers.push(new StaticPropRenderer(renderContext, this, staticProp));
 
-        // Spawn detail objects.
+        // Spawn detail objects (grass/pebbles/clutter). These are purely
+        // decorative so we defer their material+texture fetches until the
+        // browser is idle — the user sees the world geometry and props pop in
+        // immediately, then the small details fill in afterwards.
         if (this.bsp.detailObjects !== null) {
             const detailMaterial = this.getWorldSpawn().detailMaterial;
-            for (const leaf of this.bsp.detailObjects.leafDetailModels.keys())
-                this.detailPropLeafRenderers.push(new DetailPropLeafRenderer(renderContext, bsp, leaf, detailMaterial));
+            const leaves = Array.from(this.bsp.detailObjects.leafDetailModels.keys());
+            const spawnDetail = (deadline: { timeRemaining: () => number; didTimeout?: boolean }) => {
+                while (leaves.length > 0 && (deadline.didTimeout || deadline.timeRemaining() > 1)) {
+                    const leaf = leaves.shift()!;
+                    this.detailPropLeafRenderers.push(new DetailPropLeafRenderer(renderContext, bsp, leaf, detailMaterial));
+                }
+                if (leaves.length > 0) {
+                    if (typeof requestIdleCallback !== 'undefined')
+                        requestIdleCallback(spawnDetail);
+                    else
+                        setTimeout(() => spawnDetail({ timeRemaining: () => 16, didTimeout: true }), 0);
+                }
+            };
+            if (typeof requestIdleCallback !== 'undefined')
+                requestIdleCallback(spawnDetail);
+            else
+                setTimeout(() => spawnDetail({ timeRemaining: () => 16, didTimeout: true }), 0);
         }
     }
 
@@ -778,6 +838,7 @@ export class BSPRenderer {
             this.detailPropLeafRenderers[i].movement(renderContext);
         for (let i = 0; i < this.staticPropRenderers.length; i++)
             this.staticPropRenderers[i].movement(renderContext);
+
     }
 
     public gatherLiveSets(liveFaceSet: Set<number> | null, liveLeafSet: Set<number> | null, view: SourceEngineView, nodeid: number = 0, modelMatrix: ReadonlyMat4 | null = null): void {
@@ -1248,6 +1309,10 @@ export class SourceRenderContext {
 
     public debugStatistics = new DebugStatistics();
 
+    // Populated asynchronously after Jolt's WASM finishes loading.
+    public physics: PhysicsSystem | null = null;
+    public physicsReady: Promise<PhysicsSystem>;
+
     get fullbright(): boolean {
         return this.fullbrightMode === 1;
     }
@@ -1263,6 +1328,11 @@ export class SourceRenderContext {
         this.colorCorrection = new SourceColorCorrection(device, this.renderCache);
 
         this.audioManager = new AudioManager();
+
+        this.physicsReady = initPhysicsModule().then((jolt) => {
+            this.physics = new PhysicsSystem(jolt);
+            return this.physics;
+        });
 
         if (!this.device.queryLimits().occlusionQueriesRecommended) {
             // Disable auto-exposure system on backends where we shouldn't use occlusion queries.
@@ -1445,7 +1515,10 @@ export class SourceWorldViewRenderer {
                 mat4.mul(this.skyboxView.viewFromWorldMatrix, this.skyboxView.viewFromWorldMatrix, skyCamera.modelMatrix);
                 this.skyboxView.finishSetup();
 
-                skyCamera.fillFogParams(this.skyboxView.fogParams);
+                if (renderer.renderContext.enableFog)
+                    skyCamera.fillFogParams(this.skyboxView.fogParams);
+                else
+                    this.skyboxView.fogParams.maxdensity = 0.0;
 
                 // If our skybox is not in a useful spot, then don't render it.
                 if (!this.skyboxView.calcPVS(bspRenderer.bsp, false, parentViewRenderer !== null ? parentViewRenderer.skyboxView : null))
@@ -1890,6 +1963,9 @@ export class SourceRenderer implements SceneGfx {
         if (this.skyboxRenderer !== null)
             this.skyboxRenderer.movement(this.renderContext);
 
+        if (this.renderContext.physics !== null)
+            this.renderContext.physics.step(this.renderContext.globalDeltaTime);
+
         for (let i = 0; i < this.bspRenderers.length; i++)
             this.bspRenderers[i].movement(this.renderContext);
 
@@ -1913,72 +1989,89 @@ export class SourceRenderer implements SceneGfx {
         const renderHacksPanel = new UI.Panel();
         renderHacksPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
         renderHacksPanel.setTitle(UI.RENDER_HACKS_ICON, 'Render Hacks');
-        const enableFog = new UI.Checkbox('Enable Fog', true);
-        enableFog.onchanged = () => {
-            const v = enableFog.checked;
-            this.renderContext.enableFog = v;
+
+        // Helper: a checkbox whose state persists across reloads via SaveManager.
+        // Calls `apply` once with the loaded value at construction time, and
+        // again whenever the user toggles it.
+        const persistCheckbox = (label: string, key: string, defaultValue: boolean, apply: (v: boolean) => void): UI.Checkbox => {
+            const initial = GlobalSaveManager.loadSetting<boolean>(`RenderHacks.${key}`, defaultValue);
+            const cb = new UI.Checkbox(label, initial);
+            apply(initial);
+            cb.onchanged = () => {
+                apply(cb.checked);
+                GlobalSaveManager.saveSetting(`RenderHacks.${key}`, cb.checked);
+            };
+            return cb;
         };
+
+        const enableFog = persistCheckbox('Enable Fog', 'EnableFog', true, (v) => { this.renderContext.enableFog = v; });
         renderHacksPanel.contents.appendChild(enableFog.elem);
-        const enableBloom = new UI.Checkbox('Enable Bloom', true);
-        enableBloom.onchanged = () => {
-            const v = enableBloom.checked;
-            this.renderContext.enableBloom = v;
-        };
+        const enableBloom = persistCheckbox('Enable Bloom', 'EnableBloom', true, (v) => { this.renderContext.enableBloom = v; });
         renderHacksPanel.contents.appendChild(enableBloom.elem);
-        const enableAutoExposure = new UI.Checkbox('Enable Auto-Exposure', true);
-        enableAutoExposure.onchanged = () => {
-            const v = enableAutoExposure.checked;
+        const enableAutoExposure = persistCheckbox('Enable Auto-Exposure', 'EnableAutoExposure', true, (v) => {
             this.renderContext.enableAutoExposure = v;
             if (!v)
                 this.renderContext.toneMapParams.toneMapScale = 1.0;
-        };
+        });
         renderHacksPanel.contents.appendChild(enableAutoExposure.elem);
-        const enableColorCorrection = new UI.Checkbox('Enable Color Correction', true);
-        enableColorCorrection.onchanged = () => {
-            const v = enableColorCorrection.checked;
+        const enableColorCorrection = persistCheckbox('Enable Color Correction', 'EnableColorCorrection', true, (v) => {
             this.renderContext.colorCorrection.setEnabled(v);
-        };
+        });
 
-    
+
+        const fullbrightInitial = GlobalSaveManager.loadSetting<number>('RenderHacks.Fullbright', 0);
         const fullbrightSelect = new UI.RadioButtons('Fullbright', ['0', '1', '2']);
-        fullbrightSelect.setSelectedIndex(0);
+        fullbrightSelect.setSelectedIndex(fullbrightInitial);
+        this.renderContext.fullbrightMode = fullbrightInitial;
         fullbrightSelect.onselectedchange = () => {
             this.renderContext.fullbrightMode = fullbrightSelect.selectedIndex;
+            GlobalSaveManager.saveSetting('RenderHacks.Fullbright', fullbrightSelect.selectedIndex);
         };
         renderHacksPanel.contents.appendChild(fullbrightSelect.elem);
-        
-        
-        const enableSkyBleed = new UI.Checkbox('Hall of Mirrors (Missing Skybox)', true);
-        enableSkyBleed.onchanged = () => {
-            const v = enableSkyBleed.checked;
-            this.renderContext.enableSkyBleed = v;
-        };
+
+
+        const enableSkyBleed = persistCheckbox('Hall of Mirrors (Missing Skybox)', 'EnableSkyBleed', true, (v) => { this.renderContext.enableSkyBleed = v; });
         renderHacksPanel.contents.appendChild(enableSkyBleed.elem);
 
-        renderHacksPanel.contents.appendChild(enableColorCorrection.elem);
-        const enableExtensiveWater = new UI.Checkbox('Use Expensive Water', true);
-        enableExtensiveWater.onchanged = () => {
-            const v = enableExtensiveWater.checked;
-            this.renderContext.enableExpensiveWater = v;
-        };
+        const enablePhysicsCb = persistCheckbox('Enable Physics', 'EnablePhysics', true, (v) => {
+            this.renderContext.physics?.setEnabled(v);
+        });
+        renderHacksPanel.contents.appendChild(enablePhysicsCb.elem);
 
-        const useFixedTextures = new UI.Checkbox('Use Fixed Textures', SourceRenderer.fixedTexturesEnabled);
+        renderHacksPanel.contents.appendChild(enableColorCorrection.elem);
+        const enableExtensiveWater = persistCheckbox('Use Expensive Water', 'EnableExpensiveWater', true, (v) => {
+            this.renderContext.enableExpensiveWater = v;
+        });
+
+        // Fixed textures has async toggle + error revert, so it can't use the
+        // simple persistCheckbox helper. Hand-rolled with the same save key pattern.
+        const useFixedInitial = GlobalSaveManager.loadSetting<boolean>('RenderHacks.UseFixedTextures', SourceRenderer.fixedTexturesEnabled);
+        const useFixedTextures = new UI.Checkbox('Use Fixed Textures', useFixedInitial);
         let isTogglingTextures = false;
-        
+        // Apply the loaded state on startup so the checkbox UI matches reality.
+        if (useFixedInitial !== SourceRenderer.fixedTexturesEnabled) {
+            (async () => {
+                try {
+                    await this.renderContext.toggleFixedTextures(useFixedInitial);
+                    SourceRenderer.fixedTexturesEnabled = useFixedInitial;
+                } catch (e) {
+                    console.error('Failed to apply persisted fixed-textures state:', e);
+                    useFixedTextures.checked = SourceRenderer.fixedTexturesEnabled;
+                }
+            })();
+        }
         useFixedTextures.onchanged = async () => {
             if (isTogglingTextures) return;
-            
             const v = useFixedTextures.checked;
             isTogglingTextures = true;
             useFixedTextures.elem.style.opacity = '0.5';
             useFixedTextures.elem.style.pointerEvents = 'none';
-            
             try {
                 await this.renderContext.toggleFixedTextures(v);
-                SourceRenderer.fixedTexturesEnabled = v; // save state
+                SourceRenderer.fixedTexturesEnabled = v;
+                GlobalSaveManager.saveSetting('RenderHacks.UseFixedTextures', v);
             } catch (e) {
                 console.error('Failed to toggle fixed textures:', e);
-                // revert checkbox on error
                 useFixedTextures.checked = !v;
             } finally {
                 isTogglingTextures = false;
@@ -1988,58 +2081,46 @@ export class SourceRenderer implements SceneGfx {
         };
         renderHacksPanel.contents.appendChild(useFixedTextures.elem);
 
-        const showGameText = new UI.Checkbox('Show game_text Messages', game_text.getGlobalEnabled());
-        showGameText.onchanged = () => {
-            game_text.setGlobalEnabled(showGameText.checked);
-        };
+        const showGameText = persistCheckbox('Show game_text Messages', 'ShowGameText', game_text.getGlobalEnabled(), (v) => {
+            game_text.setGlobalEnabled(v);
+        });
         renderHacksPanel.contents.appendChild(showGameText.elem);
-        
-        const showServerCommands = new UI.Checkbox('Show Server Commands', ServerCommandLogger.getEnabled());
-        showServerCommands.onchanged = () => {
-            ServerCommandLogger.setEnabled(showServerCommands.checked);
-        };
+
+        const showServerCommands = persistCheckbox('Show Server Commands', 'ShowServerCommands', ServerCommandLogger.getEnabled(), (v) => {
+            ServerCommandLogger.setEnabled(v);
+        });
         renderHacksPanel.contents.appendChild(showServerCommands.elem);
 
         renderHacksPanel.contents.appendChild(enableExtensiveWater.elem);
-        const showToolMaterials = new UI.Checkbox('Show Tool-only Materials', false);
-        showToolMaterials.onchanged = () => {
-            const v = showToolMaterials.checked;
+        const showToolMaterials = persistCheckbox('Show Tool-only Materials', 'ShowToolMaterials', false, (v) => {
             this.renderContext.showToolMaterials = v;
-        };
+        });
         renderHacksPanel.contents.appendChild(showToolMaterials.elem);
-        const showDecalMaterials = new UI.Checkbox('Show Decals', true);
-        showDecalMaterials.onchanged = () => {
-            const v = showDecalMaterials.checked;
+        const showDecalMaterials = persistCheckbox('Show Decals', 'ShowDecalMaterials', true, (v) => {
             this.renderContext.showDecalMaterials = v;
-        };
+        });
         renderHacksPanel.contents.appendChild(showDecalMaterials.elem);
-        
-        const showEntityDebug = new UI.Checkbox('Show Entity Debug', false);
-        showEntityDebug.onchanged = () => {
-            const v = showEntityDebug.checked;
+
+        const showEntityDebug = persistCheckbox('Show Entity Debug', 'ShowEntityDebug', false, (v) => {
             for (let i = 0; i < this.bspRenderers.length; i++) {
                 const entityDebugger = this.bspRenderers[i].entitySystem.debugger;
                 entityDebugger.capture = v;
                 entityDebugger.draw = v;
             }
-        };
+        });
         renderHacksPanel.contents.appendChild(showEntityDebug.elem);
-        const showDebugThumbnails = new UI.Checkbox('Show Debug Thumbnails', false);
-        showDebugThumbnails.onchanged = () => {
-            const v = showDebugThumbnails.checked;
+        const showDebugThumbnails = persistCheckbox('Show Debug Thumbnails', 'ShowDebugThumbnails', false, (v) => {
             this.renderHelper.debugThumbnails.enabled = v;
-        };
+        });
         renderHacksPanel.contents.appendChild(showDebugThumbnails.elem);
 
         const sceneTriggersPanel = new UI.Panel()
         sceneTriggersPanel.customHeaderBackgroundColor = UI.COOL_PINK_COLOR;
         sceneTriggersPanel.setTitle(UI.TRIGGER_ICON, 'Scene Triggers');
-        
-        const showTriggerDebug = new UI.Checkbox('Show Trigger Debug', false);
-        showTriggerDebug.onchanged = () => {
-            const v = showTriggerDebug.checked;
+
+        const showTriggerDebug = persistCheckbox('Show Trigger Debug', 'ShowTriggerDebug', false, (v) => {
             this.renderContext.showTriggerDebug = v;
-        };
+        });
         sceneTriggersPanel.contents.appendChild(showTriggerDebug.elem);
         
         for (const bspr of this.bspRenderers){

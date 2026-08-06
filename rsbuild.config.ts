@@ -3,6 +3,7 @@ import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
 import { execSync } from 'node:child_process';
 import { readdir } from 'node:fs';
 import type { ServerResponse } from 'node:http';
+import compression from 'compression';
 import parseUrl from 'parseurl';
 import send from 'send';
 
@@ -34,8 +35,9 @@ export default defineConfig({
   output: {
     target: 'web',
     assetPrefix: process.env.NODE_ENV === 'production' ? '/' : '/',
-    // Mark Node.js built-in modules as external.
-    externals: ['fs', 'path', 'url'],
+    // Mark Node.js built-in modules as external. `module` is referenced from
+    // jolt-physics' Node-detection branch and never executes in the browser.
+    externals: ['fs', 'path', 'url', 'module'],
     // TODO: These should be converted to use `new URL('./file.wasm', import.meta.url)`
     // so that the bundler can resolve them. In the meantime, they're expected to be
     // at the root.
@@ -67,10 +69,33 @@ export default defineConfig({
   dev: {
     setupMiddlewares: [
       (middlewares, _server) => {
+        // Order matters: compression has to wrap the response BEFORE serveData
+        // writes the body, so it goes first in the chain.
         middlewares.unshift(serveData);
+        middlewares.unshift(compression({
+          filter: (req, res) => {
+            // Range requests get garbled by gzip — the middleware compresses
+            // the full buffer and returns the byte range out of the COMPRESSED
+            // stream, which the client interprets as raw uncompressed data
+            // and gets nonsense. VPK chunks use Range headers heavily, so
+            // skip compression whenever a range is requested.
+            if (req.headers['range'])
+              return false;
+            const ct = res.getHeader('Content-Type');
+            if (typeof ct === 'string' && /\b(image|video|audio)\/|application\/(zip|gzip|x-gzip|x-bzip2|x-7z)/.test(ct))
+              return false;
+            return compression.filter(req, res);
+          },
+        }) as any);
         return middlewares;
       },
     ],
+    // Game assets in /data are large and stable per session, so let the
+    // browser keep them aggressively. ETag (default) handles invalidation
+    // when files change locally.
+    headers: {
+      'Cache-Control': 'public, max-age=3600',
+    },
   },
 });
 

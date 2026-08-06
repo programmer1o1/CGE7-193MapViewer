@@ -378,10 +378,10 @@ export class Material_Water extends BaseMaterial {
 
         const p = this.param;
 
-        p['$normalmap']                    = new P.ParameterTexture();
+        p['$normalmap']                    = new P.ParameterTexture(false, false, null, true);
         p['$bumpframe']                    = new P.ParameterNumber(0);
         p['$bumptransform']                = new P.ParameterMatrix();
-        p['$envmap']                       = new P.ParameterTexture(true, true);
+        p['$envmap']                       = new P.ParameterTexture(true, true, null, true);
         p['$envmapframe']                  = new P.ParameterNumber(0);
         p['$refracttexture']               = new P.ParameterTexture(true, false, '_rt_WaterRefraction');
         p['$refracttint']                  = new P.ParameterColor(1, 1, 1);
@@ -397,13 +397,13 @@ export class Material_Water extends BaseMaterial {
         p['$forcecheap']                   = new P.ParameterBoolean(false, false);
         p['$forceenvmap']                  = new P.ParameterBoolean(false, false);
 
-        p['$flowmap']                      = new P.ParameterTexture(false, false);
+        p['$flowmap']                      = new P.ParameterTexture(false, false, null, true);
         p['$flowmapframe']                 = new P.ParameterNumber(0);
         p['$flowmapscrollrate']            = new P.ParameterVector(2);
         p['$flow_worlduvscale']            = new P.ParameterNumber(1);
         p['$flow_normaluvscale']           = new P.ParameterNumber(1);
         p['$flow_bumpstrength']            = new P.ParameterNumber(1);
-        p['$flow_noise_texture']           = new P.ParameterTexture(false, false);
+        p['$flow_noise_texture']           = new P.ParameterTexture(false, false, null, true);
         p['$flow_noise_scale']             = new P.ParameterNumber(0.0002);
         p['$flow_timeintervalinseconds']   = new P.ParameterNumber(0.4);
         p['$flow_uvscrolldistance']        = new P.ParameterNumber(0.2);

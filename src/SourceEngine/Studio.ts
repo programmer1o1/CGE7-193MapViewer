@@ -613,6 +613,7 @@ export class StudioModelData {
     public animBlockName: string | null = null;
     public animblocks: AnimBlock[] = [];
     public numLOD: number;
+    public phy: import('./Phy.js').PhyData | null = null;
 
     constructor(renderContext: SourceRenderContext, mdlBuffer: ArrayBufferSlice, vvdBuffer: ArrayBufferSlice | null, vtxBuffer: ArrayBufferSlice | null) {
         const cache = renderContext.renderCache;
@@ -1724,6 +1725,25 @@ export class StudioModelCache {
         return this.errorModelData;
     }
 
+    public isErrorModel(modelData: StudioModelData): boolean {
+        return this.errorModelData !== null && modelData === this.errorModelData;
+    }
+
+    // Deterministic 2.0x..5.0x scale derived from the failed model's path.
+    // error.mdl is naturally tiny so a uniform 1.0× makes broken props nearly
+    // invisible. Hashing the path also gives different-sized markers per
+    // missing model so they read as varied placeholders rather than a uniform
+    // field of identical dots.
+    public errorModelScaleForName(name: string): number {
+        let h = 2166136261;
+        for (let i = 0; i < name.length; i++) {
+            h ^= name.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        const u = ((h >>> 0) % 1000) / 1000; // [0, 1)
+        return 2.0 + u * 3.0;
+    }
+
     private async fetchStudioModelDataInternal(name: string, includeVertexData: boolean = true, isErrorModel: boolean = false): Promise<StudioModelData> {
         const mdlPath = this.resolvePath(name, '.mdl');
 
@@ -1731,14 +1751,17 @@ export class StudioModelCache {
         let vvdBuffer: ArrayBufferSlice | null = null;
         let vtxBuffer: ArrayBufferSlice | null = null;
         
+        let phyBuffer: ArrayBufferSlice | null = null;
         try {
             if (includeVertexData) {
                 const vvdPath = this.resolvePath(name, '.vvd');
                 const vtxPath = this.resolvePath(name, '.dx90.vtx');
-                [mdlBuffer, vvdBuffer, vtxBuffer] = await Promise.all([
+                const phyPath = this.resolvePath(name, '.phy');
+                [mdlBuffer, vvdBuffer, vtxBuffer, phyBuffer] = await Promise.all([
                     this.filesystem.fetchFileData(mdlPath),
                     this.filesystem.fetchFileData(vvdPath),
                     this.filesystem.fetchFileData(vtxPath),
+                    this.filesystem.fetchFileData(phyPath).catch(() => null),
                 ]);
             } else {
                 mdlBuffer = await this.filesystem.fetchFileData(mdlPath);
@@ -1753,6 +1776,11 @@ export class StudioModelCache {
             }
 
             const modelData = new StudioModelData(this.renderContext, mdlBuffer, vvdBuffer!, vtxBuffer!);
+
+            if (phyBuffer !== null) {
+                const phy = (await import('./Phy.js')).parsePhy(phyBuffer);
+                modelData.phy = phy;
+            }
 
             if (modelData.animBlockName !== null) {
                 // Fetch external animation block.
@@ -2041,7 +2069,7 @@ function calcPoseFromAnimation(dstBoneMatrix: mat4[], anim: AnimDesc, frame: num
     }
 }
 
-function calcBoneMatrix(dstBoneMatrix: mat4[], modelData: StudioModelData): void {
+export function calcBoneMatrix(dstBoneMatrix: mat4[], modelData: StudioModelData): void {
     for (let i = 0; i < modelData.bone.length; i++) {
         const dst = dstBoneMatrix[i];
         const bone = modelData.bone[i];
@@ -2049,7 +2077,7 @@ function calcBoneMatrix(dstBoneMatrix: mat4[], modelData: StudioModelData): void
     }
 }
 
-function calcWorldFromBone(worldFromBoneMatrix: mat4[], boneMatrix: ReadonlyMat4[], modelMatrix: ReadonlyMat4, modelData: StudioModelData, modelScale?: ReadonlyVec3, customscale: number = 1.0): void {
+export function calcWorldFromBone(worldFromBoneMatrix: mat4[], boneMatrix: ReadonlyMat4[], modelMatrix: ReadonlyMat4, modelData: StudioModelData, modelScale?: ReadonlyVec3, customscale: number = 1.0): void {
     // apply scaling at the root
     let rootMatrix = modelMatrix;
     if (modelScale && !vec3.exactEquals(modelScale, vec3.fromValues(1, 1, 1))) {
@@ -2077,7 +2105,7 @@ function calcAttachmentMatrix(attachmentMatrix: mat4[], worldFromBoneMatrix: Rea
         mat4.mul(attachmentMatrix[i], worldFromBoneMatrix[modelData.attachment[i].bone], modelData.attachment[i].local);
 }
 
-function calcWorldFromPose(worldFromPoseMatrix: mat4[], worldFromBoneMatrix: ReadonlyMat4[], modelData: StudioModelData): void {
+export function calcWorldFromPose(worldFromPoseMatrix: mat4[], worldFromBoneMatrix: ReadonlyMat4[], modelData: StudioModelData): void {
     for (let i = 0; i < worldFromPoseMatrix.length; i++)
         mat4.mul(worldFromPoseMatrix[i], worldFromBoneMatrix[i], modelData.bone[i].poseToBone);
 }
@@ -2261,7 +2289,11 @@ export class StudioModelInstance {
         if (!this.checkFrustum(renderContext))
             return;
 
-        // use the same scaling logic lol
+        // For non-skinned meshes (SkinningMode.None) the shader reads the
+        // world transform from the model matrix, not from bone matrices, so we
+        // need to feed it the *scaled* model matrix or modelScale gets lost.
+        // For skinned meshes the bone matrices already have scale baked in via
+        // calcWorldFromBone.
         const scaledModelMatrix = mat4.create();
         this.getScaledModelMatrix(scaledModelMatrix);
 
@@ -2271,11 +2303,10 @@ export class StudioModelInstance {
 
         const lodIndex = this.getLODModelIndex(renderContext);
         for (let i = 0; i < this.bodyPartInstance.length; i++) {
-
             const bodyPartInstance = this.bodyPartInstance[i];
             if (!bodyPartInstance.visible)
                 continue;
-            bodyPartInstance.getLODInstance(lodIndex).prepareToRender(renderContext, renderInstManager, this.modelMatrix, this.worldFromPoseMatrix, scratchAABB, depth);
+            bodyPartInstance.getLODInstance(lodIndex).prepareToRender(renderContext, renderInstManager, scaledModelMatrix, this.worldFromPoseMatrix, scratchAABB, depth);
         }
     }
 

@@ -211,8 +211,6 @@ export class UberShaderInstanceBasic extends UberShaderInstance<DefinesMap> {
     }
 
     public setDefineString(name: string, v: string | null): boolean {
-    
-
         if (v !== null) {
             if (this.variantSettings.get(name) === v)
                 return false;

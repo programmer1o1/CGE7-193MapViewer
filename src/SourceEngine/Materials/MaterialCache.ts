@@ -179,6 +179,10 @@ export class MaterialCache {
     public materialDefines: string[] = [];
     public deviceNeedsFlipY: boolean;
     public shaderTemplates = new ShaderTemplates();
+    // When true, ParameterTextures flagged isOptional skip their VTF fetch
+    // (envmaps/bumpmaps/detail/etc.). Trades visual fidelity for fewer fetches.
+    // Off by default — flip on for fast-load mode at the cost of flatter materials.
+    public skipOptionalTextures: boolean = false;
 
     constructor(public device: GfxDevice, public cache: GfxRenderCache, private filesystem: SourceFileSystem) {
         // Install render targets

@@ -285,7 +285,10 @@ declare global {
 export class DataFetcher {
     public requests: DataFetcherRequest[] = [];
     public doneRequestCount: number = 0;
-    public maxParallelRequests: number = 10;
+    // HTTP/2 hosts (which most CDNs are) multiplex requests on a single
+    // connection, so the old "6 per origin" browser limit no longer applies.
+    // Going wider here is a measurable cold-load speedup for map textures.
+    public maxParallelRequests: number = 32;
     public aborted: boolean = false;
     public useDevelopmentStorage: boolean | null = null;
     private cache: Cache | null = null;

@@ -2,12 +2,12 @@
 import { mat4, vec3 } from "gl-matrix";
 import { TextureMapping } from "../../TextureHolder.js";
 import { assert, assertExists, nArray, nullify } from "../../util.js";
-import { SourceRenderContext } from "../Main.js";
+import type { SourceRenderContext } from "../Main.js";
 import { VKFParamMap, VMT, vmtParseVector } from "../VMT.js";
-import { VTF } from "../VTF.js";
+import type { VTF } from "../VTF.js";
 import { MathConstants, clamp, invlerp, lerp } from "../../MathHelpers.js";
 import { Color, colorFromRGBA } from "../../Color.js";
-import { MaterialCache } from "./MaterialCache.js";
+import type { MaterialCache } from "./MaterialCache.js";
 import { BaseMaterial, EntityMaterialParameters } from "./MaterialBase.js";
 
 interface Parameter {
@@ -19,7 +19,11 @@ interface Parameter {
 export class ParameterTexture {
     public texture: VTF | null = null;
 
-    constructor(public isSRGB: boolean = false, public isEnvmap: boolean = false, public ref: string | null = null) {
+    // `isOptional` marks textures that aren't strictly required for the
+    // material to render something usable — bumpmap, envmap, detail layers,
+    // etc. When MaterialCache.skipOptionalTextures is true these are dropped
+    // to cut the per-map texture-fetch count down to ~1 per material.
+    constructor(public isSRGB: boolean = false, public isEnvmap: boolean = false, public ref: string | null = null, public isOptional: boolean = false) {
     }
 
     public parse(S: string): void {
@@ -37,6 +41,8 @@ export class ParameterTexture {
 
     public async fetch(materialCache: MaterialCache, entityParams: EntityMaterialParameters | null): Promise<void> {
         if (this.ref !== null) {
+            if (this.isOptional && materialCache.skipOptionalTextures)
+                return;
             // Special case env_cubemap if we have a local override.
             let filename = this.ref;
 
@@ -54,6 +60,10 @@ export class ParameterTexture {
             }
 
             this.texture = await materialCache.fetchVTF(filename, this.isSRGB);
+
+            // Some envmap assignments appear to use spherical envmaps; e.g. HL2's dirtfloor003b.vmt uses envmap001a.vtf which is a spherical map.
+            if (this.isEnvmap && !this.texture.isCubemap())
+                this.texture = null;
         }
     }
 
@@ -130,6 +140,7 @@ function findall(haystack: string, needle: RegExp): RegExpExecArray[] {
 const scratchMat4a = mat4.create();
 export class ParameterMatrix {
     public matrix = mat4.create();
+    public defined = false;
 
     public setMatrix(cx: number, cy: number, sx: number, sy: number, r: number, tx: number, ty: number): void {
         mat4.identity(this.matrix);
@@ -143,6 +154,7 @@ export class ParameterMatrix {
         scratchMat4a[12] = cx + tx;
         scratchMat4a[13] = cy + ty;
         mat4.mul(this.matrix, scratchMat4a, this.matrix);
+        this.defined = true;
     }
 
     public parse(S: string): void {
@@ -985,6 +997,7 @@ class MaterialProxy_FizzlerVortex {
         param.value = 1.0;
     }
 }
+
 class MaterialProxy_YellowLevel {
     public static type = `yellowlevel`;
 
@@ -998,6 +1011,7 @@ class MaterialProxy_YellowLevel {
         paramSetNum(map, this.resultvar, 1);
     }
 }
+
 class MaterialProxy_BurnLevel {
     public static type = `burnlevel`;
 
