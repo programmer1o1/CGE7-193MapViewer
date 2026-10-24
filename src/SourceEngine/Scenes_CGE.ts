@@ -16,6 +16,7 @@ const sceneDescs = [
     new CGESceneDesc('2fort_v1'),
     new CGESceneDesc('2fort_v2'),
     new CGESceneDesc('2fort_v3'),
+	new CGESceneDesc('2fort_v4'),
     "Ask",
     new CGESceneDesc('ask_v1'),
     new CGESceneDesc('ask_v2'),
