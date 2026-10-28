@@ -79,6 +79,8 @@ const sceneDescs = [
     new CGESceneDesc('quiz'),
     new CGESceneDesc('verlomisquoli'),
     new CGESceneDesc('pleasekill'),
+	"Wanderstuck Related",
+	new CGESceneDesc('c44gsho3fa58'),
 ];
 
 export const sceneGroup: SceneGroup = { id, name, sceneDescs };
